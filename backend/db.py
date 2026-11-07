@@ -33,6 +33,8 @@ class InterviewSession(SQLModel, table=True):
     interview_type: str
     num_questions: int
     resume_text: Optional[str] = None
+    jd_text: Optional[str] = None         # job description
+    notes_text: Optional[str] = None      # misc notes: company background, focus areas …
     # JSON list of question texts when this is a "retry same questions" session.
     scripted_questions: Optional[str] = None
     status: str = "active"  # active | finished
@@ -101,6 +103,8 @@ _MIGRATIONS = [
     ("interview_session", "plan_json", "VARCHAR"),
     ("interview_session", "started_at", "DATETIME"),
     ("question", "section", "VARCHAR"),
+    ("interview_session", "jd_text", "VARCHAR"),
+    ("interview_session", "notes_text", "VARCHAR"),
 ]
 
 

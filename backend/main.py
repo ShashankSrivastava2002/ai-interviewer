@@ -107,8 +107,10 @@ class SessionCreate(BaseModel):
     role: str = Field(default="Software Engineer", max_length=120)
     level: Literal["Fresher", "Mid", "Senior"] = "Mid"
     interview_type: Literal["technical", "behavioural", "mixed"] = "mixed"
-    duration_minutes: int = Field(default=30, ge=5, le=60)
+    duration_minutes: int = Field(default=30, ge=5, le=90)
     resume_text: Optional[str] = Field(default=None, max_length=20000)
+    jd_text: Optional[str] = Field(default=None, max_length=20000)
+    notes_text: Optional[str] = Field(default=None, max_length=10000)
     retry_of: Optional[int] = Field(default=None, description="Re-run the main questions of this session")
 
 
@@ -230,6 +232,10 @@ def aware(dt: datetime) -> datetime:
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
+def _clean(text: Optional[str]) -> Optional[str]:
+    return text.strip() or None if text else None
+
+
 def max_main_questions(minutes: int) -> int:
     """Upper bound on main questions; follow-ups come on top. ~1 main question per 3.5 min."""
     return max(3, round(minutes / 3.5))
@@ -245,6 +251,11 @@ def load_session(dbs, session_id: int) -> db.InterviewSession:
     if not sess:
         raise HTTPException(404, "Interview session not found.")
     return sess
+
+
+def ctx_of(sess: db.InterviewSession) -> dict[str, Optional[str]]:
+    """Resume, job description and misc notes for the prompts."""
+    return {"resume": sess.resume_text, "jd": sess.jd_text, "notes": sess.notes_text}
 
 
 def session_plan(sess: db.InterviewSession) -> Optional[dict[str, Any]]:
@@ -382,7 +393,7 @@ async def analyse_audio(src: Path, wav: Path) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 async def make_plan(sess: db.InterviewSession) -> dict[str, Any]:
-    system = prompts.planner_system(sess.role, sess.level, sess.interview_type, sess.duration_minutes, sess.resume_text)
+    system = prompts.planner_system(sess.role, sess.level, sess.interview_type, sess.duration_minutes, ctx_of(sess))
     raw = await llm.chat(system, [{"role": "user", "content": "Create the interview plan."}], json_mode=True, max_tokens=2500)
     by_key = {s.get("key"): s for s in (raw.get("sections") or [])} if isinstance(raw, dict) else {}
     plan = {"sections": []}
@@ -481,7 +492,7 @@ async def ask_llm_next(dbs, sess: db.InterviewSession, end_now: bool = False) ->
                               main_asked=main_asked, max_main=max_main, followups_left=max(0, followups_left),
                               coverage=coverage)
     system = prompts.interviewer_system(sess.role, sess.level, sess.interview_type, minutes,
-                                        sess.resume_text, session_plan(sess))
+                                        ctx_of(sess), session_plan(sess))
     messages = build_history(qs, answers, note)
     reply = await llm.chat(system, messages, json_mode=True, max_tokens=500)
     kind, text, section = _normalise_reply(reply)
@@ -543,14 +554,15 @@ async def create_session(body: SessionCreate) -> SessionCreated:
             if not mains:
                 raise HTTPException(400, "That interview has no questions to retry.")
             sess = db.InterviewSession(role=src.role, level=src.level, interview_type=src.interview_type,
-                                       num_questions=len(mains), resume_text=src.resume_text,
+                                       num_questions=len(mains), resume_text=src.resume_text, jd_text=src.jd_text, notes_text=src.notes_text,
                                        duration_minutes=src.duration_minutes or 30, plan_json=src.plan_json,
                                        scripted_questions=json.dumps(mains))
         else:
             minutes = body.duration_minutes
             sess = db.InterviewSession(role=body.role.strip() or "Software Engineer", level=body.level,
                                        interview_type=body.interview_type, duration_minutes=minutes,
-                                       num_questions=max_main_questions(minutes), resume_text=body.resume_text)
+                                       num_questions=max_main_questions(minutes), resume_text=_clean(body.resume_text),
+                                       jd_text=_clean(body.jd_text), notes_text=_clean(body.notes_text))
         dbs.add(sess)
         dbs.commit()
         dbs.refresh(sess)
@@ -670,8 +682,10 @@ async def make_feedback(session_id: int, regenerate: bool = False) -> SessionDet
         setup = {"role": sess.role, "level": sess.level, "interview_type": sess.interview_type,
                  "minutes": sess.duration_minutes}
         raw = await llm.chat(prompts.REPORT_SYSTEM,
-                             [{"role": "user", "content": prompts.report_user_message(setup, plan, q_payload, s_stats)}],
-                             json_mode=True, max_tokens=16000)
+                             [{"role": "user", "content": prompts.report_user_message(setup, plan, q_payload, s_stats, ctx_of(sess))}],
+                             # Long (60–90 min) interviews need a much bigger report budget and more time.
+                             json_mode=True, max_tokens=min(60000, 16000 + 1200 * len(q_payload)),
+                             timeout=120 + 6 * len(q_payload))
         try:
             report = scoring.build_report(raw, plan, q_payload, s_stats)
         except ValueError as e:

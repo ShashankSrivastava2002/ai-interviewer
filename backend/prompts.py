@@ -62,32 +62,48 @@ INTERVIEW_TYPES = {
 }
 
 
-def _tailor(resume_text: str | None) -> str:
-    if not resume_text or not resume_text.strip():
-        return ""
-    return ("\n\nCandidate resume / job description (tailor everything to it; never quote it back at length):\n\"\"\"\n"
-            + resume_text.strip()[:6000] + "\n\"\"\"")
+# The three optional inputs from the setup screen, how the agents should use them, and size caps.
+CONTEXT_PARTS = [
+    ("resume", "CANDIDATE RESUME", 8000,
+     "the candidate's real experience: ask about these projects, verify depth and personal ownership"),
+    ("jd", "JOB DESCRIPTION", 6000,
+     "what the role needs: test these requirements and judge role alignment against them"),
+    ("notes", "ADDITIONAL NOTES", 4000,
+     "background from the candidate (company, team, product, interview focus): use it for context and "
+     "company-specific questions, and respect any focus areas it mentions"),
+]
+
+
+def _tailor(ctx: dict[str, str | None] | None) -> str:
+    """Formats resume / JD / notes for a prompt. Never quote them back at length."""
+    out = []
+    for key, title, cap, how in CONTEXT_PARTS:
+        text = ((ctx or {}).get(key) or "").strip()
+        if text:
+            out.append(f'\n\n{title} ({how}):\n"""\n{text[:cap]}\n"""')
+    return "".join(out)
 
 
 # ---------------------------------------------------------------------------
 # 1. Planner
 # ---------------------------------------------------------------------------
 
-def planner_system(role: str, level: str, interview_type: str, minutes: int, resume_text: str | None) -> str:
+def planner_system(role: str, level: str, interview_type: str, minutes: int, ctx: dict[str, str | None] | None) -> str:
     comp = "\n".join(f'- "{c["key"]}": {c["name"]}' for c in COMPETENCIES)
     return f"""You design structured screening interviews, like an experienced technical recruiter.
 
 Role: {role}
 Level: {level}
 Format: {INTERVIEW_TYPES.get(interview_type, INTERVIEW_TYPES['mixed'])}
-Length: {minutes} minutes{_tailor(resume_text)}
+Length: {minutes} minutes{_tailor(ctx)}
 
 Build an interview plan with exactly these four sections (keys fixed):
 {comp}
 
 For each section write 2–3 EXPECTATIONS: specific, observable things a strong {level} candidate for this role would
 demonstrate, phrased so a reviewer can judge them from a transcript (e.g. "Explains why they chose a DAG-based
-orchestration over a linear agent chain, with the trade-offs"). Tailor them to the role and resume/JD. Also give 2
+orchestration over a linear agent chain, with the trade-offs"). Base them on the job description's requirements
+when given, probe the projects on the resume, and use the additional notes for company/domain context. Also give 2
 sample questions per section (spoken style, under 40 words each).
 
 Reply with JSON only:
@@ -99,7 +115,7 @@ Reply with JSON only:
 # ---------------------------------------------------------------------------
 
 def interviewer_system(role: str, level: str, interview_type: str, minutes: int,
-                       resume_text: str | None, plan: dict[str, Any] | None) -> str:
+                       ctx: dict[str, str | None] | None, plan: dict[str, Any] | None) -> str:
     plan_txt = ""
     if plan:
         lines = []
@@ -115,11 +131,13 @@ def interviewer_system(role: str, level: str, interview_type: str, minutes: int,
 
 Role: {role}
 Level: {level}
-Format: {INTERVIEW_TYPES.get(interview_type, INTERVIEW_TYPES['mixed'])}{_tailor(resume_text)}{plan_txt}
+Format: {INTERVIEW_TYPES.get(interview_type, INTERVIEW_TYPES['mixed'])}{_tailor(ctx)}{plan_txt}
 
 Rules:
 - Ask exactly ONE question at a time, under 40 words, natural spoken English (it is read aloud): no lists, markdown or code.
 - Open with a short warm greeting and an "introduce yourself / walk me through your background" style question.
+- Long sessions (60–90 min) go deeper, not wider: spend more follow-ups per topic, include a design/problem-solving
+  discussion and at least one question that uses the job description or company notes when provided.
 - Cover all plan sections within the time limit. Budget time so no section is left out.
 - When an answer is vague, generic, uses "we" without the candidate's own part, or lacks numbers, ask a short
   FOLLOW-UP that probes for the missing evidence (e.g. "What was your specific contribution?", "Why that approach?",
@@ -158,7 +176,9 @@ REPORT_SYSTEM = """You are the reviewer for a spoken screening interview. You wr
 in the voice of an experienced recruiter coaching the candidate ("you").
 
 You receive:
-1. Interview setup (role, level, format).
+1. Interview setup (role, level, format) and any CONTEXT: resume, job description, additional notes about the company.
+   Judge Role Alignment against the job description and company notes when given (did they connect their experience
+   to what this role and company need?). Strong answers may use facts from the resume.
 2. The interview PLAN: four competency sections, each with expectations that have ids like "role_alignment.1".
 3. Every question numbered "Question N" (follow-ups are numbered too) with the candidate's VERBATIM answer. Fillers
    (um, uh), repetitions, false starts ("to a—") and pauses ("…") are exactly as spoken.
@@ -219,9 +239,10 @@ def plan_for_prompt(plan: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def report_user_message(setup: dict[str, Any], plan: dict[str, Any], questions: list[dict[str, Any]],
-                        session_stats: dict[str, Any]) -> str:
+                        session_stats: dict[str, Any], ctx: dict[str, str | None] | None = None) -> str:
     lines = [
         "INTERVIEW SETUP", json.dumps(setup, ensure_ascii=False), "",
+        "CONTEXT" + (_tailor(ctx) or "\n(none provided)"), "",
         "INTERVIEW PLAN", json.dumps(plan_for_prompt(plan), ensure_ascii=False), "",
         "DELIVERY STATISTICS (exact, computed by software)", json.dumps(session_stats, ensure_ascii=False), "",
         "QUESTIONS AND VERBATIM ANSWERS",
