@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Interview Room</title>
+  <meta name="description" content="Practise spoken interviews with an AI interviewer and get verbatim fluency feedback." />
+  <meta name="color-scheme" content="light dark" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='12' fill='%235b7cfa'/></svg>" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="appbar no-print">
+    <a class="brand" href="#/setup" aria-label="Interview Room home">
+      <span class="brand-dot" aria-hidden="true"></span>
+      Interview Room
+    </a>
+    <div class="appbar-right">
+      <button id="health-chip" class="chip chip-status" type="button" title="System status">
+        <span class="dot" aria-hidden="true"></span><span class="label">Checking…</span>
+      </button>
+      <a class="link-quiet" href="#/history">Past interviews</a>
+    </div>
+  </header>
+
+  <div id="health-panel" class="health-panel no-print" hidden></div>
+
+  <main id="main">
+
+    <!-- ============================================================
+         SCREEN 1 — SETUP
+         ============================================================ -->
+    <section id="screen-setup" class="screen" data-screen="setup" hidden>
+      <div class="container narrow">
+        <p class="eyebrow">Mock interview</p>
+        <h1 class="display">Practise out loud.<br /><em>Every um counts.</em></h1>
+        <p class="lede">An AI interviewer asks questions by voice. We keep a word-for-word transcript —
+          fillers, stammers, pauses and all — and turn it into honest feedback.</p>
+
+        <form id="setup-form" class="stack-lg" autocomplete="off">
+          <div class="field">
+            <label for="role" class="field-label">Role you're interviewing for</label>
+            <input id="role" name="role" class="input" type="text" placeholder="e.g. Backend Engineer" maxlength="120" required />
+            <div class="chips" id="role-chips" role="list">
+              <button type="button" class="chip" data-role="Frontend Developer">Frontend Dev</button>
+              <button type="button" class="chip" data-role="Data Analyst">Data Analyst</button>
+              <button type="button" class="chip" data-role="Product Manager">Product Manager</button>
+              <button type="button" class="chip" data-role="Java Developer">Java Developer</button>
+              <button type="button" class="chip" data-role="HR / Fresher (general)">HR/Fresher</button>
+            </div>
+          </div>
+
+          <fieldset class="field">
+            <legend class="field-label">Level</legend>
+            <div class="pills" id="level-pills">
+              <label class="pill"><input type="radio" name="level" value="Fresher" /><span>Fresher</span></label>
+              <label class="pill"><input type="radio" name="level" value="Mid" checked /><span>Mid</span></label>
+              <label class="pill"><input type="radio" name="level" value="Senior" /><span>Senior</span></label>
+            </div>
+          </fieldset>
+
+          <fieldset class="field">
+            <legend class="field-label">Interview type</legend>
+            <div class="type-cards">
+              <label class="type-card">
+                <input type="radio" name="interview_type" value="technical" />
+                <span class="type-icon" aria-hidden="true">⌘</span>
+                <span class="type-title">Technical</span>
+                <span class="type-desc">Concepts, problem solving, trade-offs</span>
+              </label>
+              <label class="type-card">
+                <input type="radio" name="interview_type" value="behavioural" />
+                <span class="type-icon" aria-hidden="true">☺</span>
+                <span class="type-title">HR &amp; Behavioural</span>
+                <span class="type-desc">Teamwork, conflict, ownership — STAR</span>
+              </label>
+              <label class="type-card">
+                <input type="radio" name="interview_type" value="mixed" checked />
+                <span class="type-icon" aria-hidden="true">◐</span>
+                <span class="type-title">Mixed</span>
+                <span class="type-desc">A bit of both, like a real loop</span>
+              </label>
+            </div>
+          </fieldset>
+
+          <div class="field">
+            <div class="field-row">
+              <label for="duration" class="field-label">Session length</label>
+              <output id="duration-output" for="duration" class="muted">30 min · about 9 questions</output>
+            </div>
+            <input id="duration" class="range" type="range" min="10" max="45" step="5" value="30" />
+            <div class="range-scale" aria-hidden="true"><span>10 min</span><span>45 min</span></div>
+          </div>
+
+          <details class="disclosure">
+            <summary>Tailor it to me <span class="muted">— paste your resume or a job description (optional)</span></summary>
+            <textarea id="resume" class="input textarea" rows="7" maxlength="20000"
+              placeholder="Paste resume text or a job description. Questions will be tailored to it."></textarea>
+          </details>
+
+          <p id="setup-error" class="form-error" role="alert" hidden></p>
+
+          <div class="cta-row">
+            <button id="start-btn" type="submit" class="btn btn-primary btn-xl">Start Interview <span aria-hidden="true">→</span></button>
+            <a class="link-quiet" href="#/history">Past interviews</a>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         SCREEN 2 — MIC CHECK
+         ============================================================ -->
+    <section id="screen-mic" class="screen" data-screen="mic" hidden>
+      <div class="container narrow stack-lg">
+        <div>
+          <p class="eyebrow">Before we start</p>
+          <h2 class="title">Quick sound check</h2>
+          <p class="muted">About 20 seconds. We'll make sure your filler words are actually being captured.</p>
+        </div>
+
+        <ol class="steps">
+          <li class="step" id="step-permission">
+            <div class="step-head"><span class="step-num">1</span><h3>Allow your microphone</h3></div>
+            <p class="muted">Your voice is recorded only while you answer and is processed by this app's server.
+              Nothing is recorded in the background.</p>
+            <button id="mic-allow" class="btn btn-secondary" type="button">Allow microphone</button>
+            <p id="mic-perm-status" class="status-line" role="status"></p>
+          </li>
+
+          <li class="step" id="step-quiet" aria-disabled="true">
+            <div class="step-head"><span class="step-num">2</span><h3>Stay quiet for 3 seconds</h3></div>
+            <p class="muted">This measures your room's background noise for the live voice meter.</p>
+            <div class="meter" aria-hidden="true"><div class="meter-fill" id="mic-meter"></div><div class="meter-floor" id="mic-floor"></div></div>
+            <button id="quiet-btn" class="btn btn-secondary" type="button" disabled>Measure silence</button>
+            <p id="quiet-status" class="status-line" role="status"></p>
+          </li>
+
+          <li class="step" id="step-say" aria-disabled="true">
+            <div class="step-head"><span class="step-num">3</span><h3>Say: <q>Umm, I'm ready for my interview</q></h3></div>
+            <p class="muted">Say the “umm” on purpose. We'll check whether the speech engine keeps it.</p>
+            <button id="say-btn" class="btn btn-secondary" type="button" disabled>● Record phrase</button>
+            <div id="say-result" class="say-result" role="status"></div>
+          </li>
+
+          <li class="step" id="step-voice">
+            <div class="step-head"><span class="step-num">4</span><h3>Interviewer voice</h3></div>
+            <div class="voice-grid">
+              <label class="field">
+                <span class="field-label small">Voice</span>
+                <select id="voice-select" class="input"></select>
+              </label>
+              <label class="field">
+                <span class="field-label small">Speed <output id="rate-output">1.0×</output></span>
+                <input id="rate" class="range" type="range" min="0.7" max="1.4" step="0.05" value="1" />
+              </label>
+            </div>
+            <button id="voice-preview" class="btn btn-ghost" type="button">▶ Preview voice</button>
+            <p id="voice-note" class="muted small" hidden>Your browser has no speech voices — questions will be shown as text only.</p>
+          </li>
+        </ol>
+
+        <p id="mic-error" class="form-error" role="alert" hidden></p>
+        <div class="cta-row">
+          <button id="mic-continue" class="btn btn-primary btn-xl" type="button" disabled>Begin interview <span aria-hidden="true">→</span></button>
+          <button id="mic-back" class="btn btn-ghost" type="button">Back</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         SCREEN 3 — INTERVIEW
+         ============================================================ -->
+    <section id="screen-interview" class="screen screen-interview" data-screen="interview" hidden>
+      <div class="call-bar">
+        <div class="call-left">
+          <span class="rec-dot" aria-hidden="true"></span>
+          <div class="q-meta">
+            <span id="q-label" class="q-label">Question 1</span>
+            <span id="q-section" class="q-section"></span>
+          </div>
+          <div id="q-dots" class="section-dots" aria-label="Sections covered"></div>
+        </div>
+        <div class="call-right">
+          <span id="timer" class="timer" aria-label="Time remaining">30:00 left</span>
+          <button id="transcript-btn" class="btn btn-ghost btn-sm" type="button" aria-pressed="true" title="Show or hide the transcript (T)">Transcript</button>
+          <button id="end-btn" class="btn btn-danger btn-sm" type="button">End interview</button>
+        </div>
+      </div>
+
+      <div class="call-body">
+        <div class="stage">
+          <div class="ai-tile">
+            <div id="orb" class="orb" data-state="idle" aria-hidden="true">
+              <span class="orb-ring r1"></span><span class="orb-ring r2"></span><span class="orb-ring r3"></span>
+              <span class="orb-core"></span>
+            </div>
+            <div class="ai-tile-foot">
+              <span class="tile-name">AI Interviewer</span>
+              <span id="orb-label" class="orb-label" role="status" aria-live="polite">Getting ready…</span>
+            </div>
+          </div>
+
+          <div class="caption">
+            <span id="followup-tag" class="tag" hidden>Follow-up</span>
+            <p id="question-text" class="question-text" aria-live="polite"></p>
+            <p class="hint">Take your time — pauses are fine. Press <kbd>Space</kbd> when you're done.</p>
+          </div>
+
+          <div id="upload-error" class="error-card" role="alert" hidden>
+            <p id="upload-error-text">Upload failed.</p>
+            <div class="row-gap">
+              <button id="retry-upload" class="btn btn-primary btn-sm" type="button">Retry upload</button>
+              <a id="download-blob" class="btn btn-ghost btn-sm" download="answer.webm">Save recording</a>
+            </div>
+            <p class="muted small">Your answer is kept safely in this tab until it uploads.</p>
+          </div>
+        </div>
+
+        <aside id="transcript-panel" class="transcript-panel" aria-label="Interview transcript">
+          <div class="tp-head">
+            <h3>Transcript</h3>
+            <label class="switch" id="live-switch" title="Show approximate captions while you speak">
+              <input id="live-toggle" type="checkbox" /><span>Live captions</span>
+            </label>
+          </div>
+          <ol id="conversation" class="conversation"></ol>
+          <div class="tp-foot">
+            <div class="legend compact" aria-label="Legend">
+              <span><span class="tok filler">um</span> filler</span>
+              <span><span class="tok stammer">I-I</span> stammer</span>
+              <span><span class="tok repetition">the</span> repeat</span>
+              <span><span class="tok false_start">to a—</span> false start</span>
+              <span><span class="pause-pill">⏸ 1.2s</span> pause</span>
+            </div>
+            <p id="live-note" class="muted small">Live captions are approximate. Your exact word-for-word transcript appears after you press Done.</p>
+          </div>
+        </aside>
+      </div>
+
+      <div class="controls" role="toolbar" aria-label="Interview controls">
+        <button id="repeat-btn" class="ctrl" type="button" title="Repeat question (R)">
+          <span class="ctrl-icon" aria-hidden="true">↻</span><span class="ctrl-label">Repeat</span><kbd>R</kbd>
+        </button>
+        <button id="done-btn" class="ctrl ctrl-main" type="button" title="Done answering (Space)" disabled>
+          <span class="ctrl-icon" aria-hidden="true">■</span><span class="ctrl-label">Done answering</span><kbd>Space</kbd>
+        </button>
+        <button id="skip-btn" class="ctrl" type="button" title="Skip question (S)">
+          <span class="ctrl-icon" aria-hidden="true">⏭</span><span class="ctrl-label">Skip</span><kbd>S</kbd>
+        </button>
+        <button id="mute-btn" class="ctrl ctrl-small" type="button" title="Mute interviewer voice (M)" aria-pressed="false">
+          <span class="ctrl-icon" aria-hidden="true">🔊</span><span class="ctrl-label">Voice</span><kbd>M</kbd>
+        </button>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         LOADING (feedback generation)
+         ============================================================ -->
+    <section id="screen-loading" class="screen" data-screen="loading" hidden>
+      <div class="container narrow center-col">
+        <div class="orb" data-state="thinking" aria-hidden="true">
+          <span class="orb-ring r1"></span><span class="orb-ring r2"></span><span class="orb-ring r3"></span><span class="orb-core"></span>
+        </div>
+        <h2 class="title">Writing your feedback…</h2>
+        <p class="muted" id="loading-text">Counting fillers and pauses, then reviewing your answers. This can take up to a minute.</p>
+        <p id="loading-error" class="form-error" role="alert" hidden></p>
+        <div class="row-gap" id="loading-actions" hidden>
+          <button id="loading-retry" class="btn btn-primary" type="button">Try again</button>
+          <a class="btn btn-ghost" href="#/setup">Home</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         SCREEN 4 — FEEDBACK REPORT
+         ============================================================ -->
+    <section id="screen-report" class="screen" data-screen="report" hidden>
+      <div class="container" id="report-root"></div>
+    </section>
+
+    <!-- ============================================================
+         HISTORY
+         ============================================================ -->
+    <section id="screen-history" class="screen" data-screen="history" hidden>
+      <div class="container stack-lg">
+        <div class="row-between">
+          <div>
+            <p class="eyebrow">History</p>
+            <h2 class="title">Past interviews</h2>
+          </div>
+          <a class="btn btn-primary" href="#/setup">New interview</a>
+        </div>
+        <div class="card" id="history-chart-card" hidden>
+          <div class="row-between">
+            <h3 class="card-title">Scores over time</h3>
+            <div class="legend-inline">
+              <span><i class="sw sw-overall"></i>Overall</span>
+              <span><i class="sw sw-fluency"></i>Fluency</span>
+            </div>
+          </div>
+          <div id="history-chart"></div>
+        </div>
+        <ul id="history-list" class="history-list"></ul>
+        <p id="history-empty" class="muted" hidden>No interviews yet — your first one is a click away.</p>
+      </div>
+    </section>
+  </main>
+
+  <!-- Confirm dialog -->
+  <dialog id="confirm-dialog" class="dialog">
+    <form method="dialog">
+      <h3 id="confirm-title">End the interview?</h3>
+      <p id="confirm-body" class="muted">You'll still get feedback on the questions you've answered.</p>
+      <div class="row-gap end">
+        <button value="cancel" class="btn btn-ghost" type="submit">Keep going</button>
+        <button value="ok" class="btn btn-primary" type="submit" id="confirm-ok">End &amp; get feedback</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

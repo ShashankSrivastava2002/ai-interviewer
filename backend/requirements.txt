@@ -1,0 +1,36 @@
+# ---- Core server ----
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+pydantic>=2.7
+pydantic-settings>=2.3
+sqlmodel>=0.0.21
+httpx>=0.27
+numpy>=1.26
+
+# ---- Pause detection (VAD) ----
+# webrtcvad-wheels ships prebuilt wheels (no C compiler needed) and provides `import webrtcvad`.
+webrtcvad-wheels>=2.0.14
+
+# ---- Local verbatim speech-to-text (STT_PROVIDER=local) ----
+# CrisperWhisper 2.0 — default local engine (LOCAL_STT_ENGINE=crisperwhisper).
+# The [transformers] extra is pure PyTorch and runs on macOS, Windows, Linux, CPU or GPU.
+# On an NVIDIA GPU under Linux you can use the faster CTranslate2 backend instead:
+#   pip install "crisperwhisper[ct2,convert]>=2.0.4"   and set CRISPERWHISPER_BACKEND=ct2
+# NOTE: CrisperWhisper 2.0 weights are under nyra health's Non-Commercial Research License.
+crisperwhisper[transformers]>=2.0.4
+
+# faster-whisper — alternative local engine (LOCAL_STT_ENGINE=faster-whisper).
+faster-whisper>=1.0.3
+
+# ---- Tests ----
+pytest>=8.0
+
+# ---- Optional: provider SDKs ----
+# Not required — this app talks to Deepgram, AssemblyAI, OpenAI, Anthropic and
+# Gemini over plain HTTPS with httpx. Install them only if you want to extend the code.
+# deepgram-sdk
+# assemblyai
+# openai
+# anthropic
+# google-genai
