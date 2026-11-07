@@ -844,6 +844,10 @@ body { font-family: var(--font); font-size: 15px; letter-spacing: -.003em; }
   .breakdown .tab-panel { display: block !important; }
 }
 
+/* strict scoring additions */
+.band.b-not-reached { background: var(--surface-2); color: var(--muted); }
+.exp-note { margin: 4px 0 0; font-size: .8rem; color: var(--warn); }
+
 /* ---------- responsive ---------- */
 @media (max-width: 720px) {
   .type-cards { grid-template-columns: 1fr; }

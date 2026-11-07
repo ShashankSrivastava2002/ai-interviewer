@@ -18,6 +18,7 @@ from collections import Counter
 from typing import Any
 
 IDEAL_WPM = (120, 160)
+NEAR_EMPTY_WORDS = 5
 
 SPOKEN_KINDS = ("word", "repetition", "stammer", "false_start")
 
@@ -122,7 +123,10 @@ def session_stats(per_answer: list[dict[str, Any]]) -> dict[str, Any]:
     pause_counts = sum(a["stats"]["pauses"]["count"] for a in answered)
     pause_time = sum(a["stats"]["pauses"]["total_seconds"] for a in answered)
     thinking = [a["stats"]["thinking_time"] for a in answered]
-    scores = [a["stats"]["fluency_score"] for a in answered if a["stats"].get("fluency_score") is not None]
+    # Near-empty answers ("um", a breath, two words) count as 0 — silence is not fluent delivery.
+    scores = [a["stats"]["fluency_score"] if (a["stats"].get("fluency_score") is not None
+                                             and a["stats"].get("word_count", 0) >= NEAR_EMPTY_WORDS) else 0.0
+              for a in answered]
 
     return {
         "answers": len(answered),

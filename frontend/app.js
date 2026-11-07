@@ -1170,7 +1170,7 @@ const REPORT_TITLE = {
   behavioural: "HR & Behavioural Screen Feedback",
   mixed: "Screening Interview Feedback",
 };
-const bandCls = (b) => `b-${String(b || "none").toLowerCase()}`;
+const bandCls = (b) => `b-${String(b || "none").toLowerCase().replace(/\s+/g, "-")}`;
 
 async function openReport(id) {
   const root = $("#report-root");
@@ -1284,12 +1284,14 @@ function evidenceHTML(c) {
   const lv = (e) => `<span class="lvl lvl-${e.level}">${esc(e.label)}</span>`;
   return `<details class="evidence">
     <summary>How this score was calculated</summary>
-    <p class="muted small">Each expectation is scored 3 Met · 2 Partially met · 1 Not met · 0 Not assessed, and every score
-      must quote your exact words. Score = average of assessed levels ÷ 3 × 100${c.key === "communication" && c.delivery_score != null
-        ? `, blended 70/30 with your measured delivery score (rubric ${c.rubric_score ?? "—"} · delivery ${c.delivery_score})` : ""}.</p>
+    <p class="muted small">Each expectation earns <b>Met 100 · Partially met 45 · Not met 10 · No evidence 0</b>.
+      Every level must quote your exact words, and short answers can't earn Met (needs 40+ words) or Partially met (20+).
+      Score = average of the expectations${c.key === "communication"
+        ? `, blended 70/30 with your measured delivery (rubric ${c.rubric_score ?? 0} · delivery ${c.delivery_score ?? 0})` : ""}.</p>
     <ul class="exp-list">${c.expectations.map((e) => `
       <li>
         <div class="exp-row"><span>${esc(e.text)}</span>${lv(e)}</div>
+        ${e.note ? `<p class="exp-note">${esc(e.note)}</p>` : ""}
         ${(e.evidence || []).map((ev) => `<blockquote>“${esc(ev.quote)}” <button type="button" class="q-chip" data-goto="${ev.question}">Question ${ev.question}</button></blockquote>`).join("")}
       </li>`).join("")}</ul>
   </details>`;
@@ -1386,7 +1388,7 @@ function renderReport(d) {
       <p class="prose">${esc(r.overall_summary)}</p>
 
       <div class="grid-2 lists">
-        <div><h2 class="h-sec">What You Are Doing Well</h2>${iconList(r.doing_well, "good")}</div>
+        <div><h2 class="h-sec">What You Are Doing Well</h2>${r.doing_well?.length ? iconList(r.doing_well, "good") : '<p class="muted">Nothing stood out as a strength in this interview.</p>'}</div>
         <div><h2 class="h-sec">Top Things You Can Improve</h2>${iconList(r.improve, "up")}</div>
       </div>
     </article>
@@ -1433,6 +1435,7 @@ function renderReport(d) {
     <div class="actions">
       <button class="btn btn-primary" id="act-retry">Retry same questions</button>
       <a class="btn btn-secondary" href="#/setup">New interview</a>
+      <button class="btn btn-ghost" id="act-regen" title="Score this interview again with the current rules">Regenerate report</button>
       <button class="btn btn-ghost" id="act-pdf">Download PDF</button>
       <button class="btn btn-ghost" id="act-csv">Download CSV</button>
       <button class="btn btn-ghost" id="act-txt">Download verbatim .txt</button>
@@ -1559,6 +1562,7 @@ function wireReport(d) {
   wireTranscripts(".qa");
   $("#act-retry").onclick = () => { beginCreate({ retry_of: d.id }); location.hash = "#/mic"; };
   $("#act-pdf").onclick = () => window.print();
+  $("#act-regen").onclick = () => { delete state.detailCache[d.id]; generateFeedback(d.id, true); };
   $("#act-csv").onclick = () => download(`interview-${d.id}.csv`, reportCsv(d), "text/csv");
   $("#act-txt").onclick = () => download(`interview-${d.id}-verbatim.txt`, verbatimTxt(d), "text/plain");
   $("#act-json").onclick = () => download(`interview-${d.id}.json`, JSON.stringify(d, null, 2), "application/json");

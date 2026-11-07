@@ -662,9 +662,10 @@ async def make_feedback(session_id: int, regenerate: bool = False) -> SessionDet
         for q in qs:
             a = answers.get(q.id)
             item = {"id": q.id, "number": q.position + 1, "kind": q.kind, "section": q.section, "text": q.text,
-                    "skipped": bool(a and a.skipped), "verbatim": None, "stats": None}
+                    "skipped": bool(a and a.skipped), "verbatim": None, "stats": None, "content_words": 0}
             if a and not a.skipped:
                 item["verbatim"] = disfluency.to_plain_verbatim(a.tokens)
+                item["content_words"] = sum(1 for t in a.tokens if t["kind"] in fluency.SPOKEN_KINDS)
                 item["stats"] = a.stats
                 if a.stats:
                     per_answer.append({"question_id": q.id, "index": q.position + 1, "stats": a.stats})
@@ -685,12 +686,12 @@ async def make_feedback(session_id: int, regenerate: bool = False) -> SessionDet
                              [{"role": "user", "content": prompts.report_user_message(setup, plan, q_payload, s_stats, ctx_of(sess))}],
                              # Long (60–90 min) interviews need a much bigger report budget and more time.
                              json_mode=True, max_tokens=min(60000, 16000 + 1200 * len(q_payload)),
-                             timeout=120 + 6 * len(q_payload))
+                             timeout=120 + 6 * len(q_payload), model=settings.llm_report_model or None)
         try:
             report = scoring.build_report(raw, plan, q_payload, s_stats)
         except ValueError as e:
             raise llm.LLMError("The AI returned an invalid report. Please try again.") from e
-        report["generated_with"] = {"llm": settings.llm_provider, "model": settings.resolved_llm_model,
+        report["generated_with"] = {"llm": settings.llm_provider, "model": settings.llm_report_model or settings.resolved_llm_model,
                                     "stt": stt_service.status()["name"]}
 
         await build_recording(sess, qs, answers)

@@ -189,10 +189,24 @@ HOW TO SCORE (strict, evidence-based):
     3 = Met            concrete evidence: clarity, ownership, structured reasoning, specific examples
     2 = Partially Met  some relevant evidence, but lacking depth or specificity
     1 = Not Met        incorrect reasoning, or only vague, theoretical answers
-    0 = Not Assessed   no relevant moment exists in the transcript (do NOT guess)
+    0 = No evidence    no relevant moment exists in the transcript (do NOT guess). Note: no evidence earns ZERO
+                       points — it is not neutral.
 - Every score of 1–3 MUST cite at least one evidence quote: an exact, word-for-word substring of that question's
   answer (3–30 words, copied verbatim including fillers). Never paraphrase inside a quote. If you cannot quote it,
   the score is 0.
+- CALIBRATION — be a strict, realistic recruiter. Inflated scores are a failure of your job:
+    * Level 3 is rare: a complete, specific, first-person answer with concrete details/numbers that fully meets the
+      expectation. Level 2 needs a real attempt with SOME specifics. Merely mentioning a topic is level 1.
+    * One-line, evasive, off-topic, confused, joking or non-answers ("Systems… system.", "um", silence) are level 1
+      at best for anything they touch, and give NO evidence for anything else.
+    * Asking the interviewer what to say, refusing, or not understanding the question is level 1.
+    * Unprofessional or offensive language is a serious red flag: level 1 for the communication and role-alignment
+      expectations it touches; call it out plainly (without repeating slurs) in the assessment and summary.
+    * Do not give credit for what the candidate might know. Score only what they actually said.
+- Ratings for each question follow the same scale: Weak (non-answer / wrong / vague), Moderate (relevant but thin),
+  Good (specific and correct), Excellent (specific, structured, quantified, clearly owned).
+- "doing_well" and "strengths" must be genuine. If nothing was done well, return an empty list — never pad with
+  generic praise like "expressed interest". The overall_summary must state plainly how the interview went.
 - Judge content separately from delivery. Delivery (fillers, false starts, pauses, rambling, "we" vs "I") belongs
   under communication; technical depth belongs under technical_background even if delivery was poor.
 

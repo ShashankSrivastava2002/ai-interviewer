@@ -42,6 +42,8 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     gemini_api_key: str = ""
     llm_timeout_seconds: float = 120.0
+    # Optional stronger/stricter model just for the feedback report (e.g. gemini-2.5-pro, claude-opus-5-5).
+    llm_report_model: str = ""
 
     # ---------- Speech-to-text ----------
     stt_provider: Literal["local", "deepgram", "assemblyai", "openai"] = "local"

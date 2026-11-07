@@ -1,24 +1,25 @@
-"""Tests for evidence verification, /100 scores and bands (scoring.py)."""
+"""Tests for strict scoring: evidence checks, substance gates, points, bands (scoring.py)."""
 from backend import scoring
 from backend.prompts import COMPETENCY_KEYS
 
 PLAN = {"sections": [{"key": k, "expectations": [f"{k} exp A", f"{k} exp B"]} for k in COMPETENCY_KEYS]}
-ANSWER = ("So I have been assigned. To a— for making a platform which is which is an MCP platform. "
-          "uh I have hosted it over the Kubernetes and I have solved about 20 to 30 use cases")
-QUESTIONS = [
-    {"number": 1, "id": 11, "verbatim": "I moved for scale, three million shipments per day", "skipped": False, "section": "role_alignment"},
-    {"number": 2, "id": 12, "verbatim": ANSWER, "skipped": False, "section": "technical_background"},
-    {"number": 3, "id": 13, "verbatim": None, "skipped": True, "section": "impact_ownership"},
-]
-STATS = {"fluency_score": 4.0}
+LONG = ("So I was the main backend engineer on our MCP platform. I designed the workflow and agent orchestration "
+        "layer myself, deployed the whole stack on Kubernetes, set up the LLM gateway for cost governance, and "
+        "onboarded around twenty to thirty use cases, ten of which are now in production serving about one hundred "
+        "thousand LLM calls per day across teams.")
 
 
-def comp(key, levels, quotes):
+def q(n, text, section, skipped=False):
+    words = len(text.split()) if text else 0
+    return {"number": n, "id": 100 + n, "verbatim": text, "skipped": skipped, "section": section, "content_words": words}
+
+
+def comp(key, levels_quotes, questions=()):
     return {"key": key, "assessment": "a",
-            "expectations": [{"id": f"{key}.{i + 1}", "level": lv, "evidence": [{"question": 2, "quote": q}] if q else []}
-                             for i, (lv, q) in enumerate(zip(levels, quotes))],
-            "improvements": [{"title": "Use I", "detail": "d", "seen_in": [2, 99]}], "strengths": [],
-            "questions": [{"question": 2, "rating": "moderate", "verdict": "v", "strong_answer": "s"}] if key == "technical_background" else []}
+            "expectations": [{"id": f"{key}.{i + 1}", "level": lv, "evidence": [{"question": qn, "quote": qt}] if qt else []}
+                             for i, (lv, qn, qt) in enumerate(levels_quotes)],
+            "improvements": [{"title": "Use I", "detail": "d", "seen_in": [1, 99]}], "strengths": [],
+            "questions": [{"question": n, "rating": r, "verdict": "v", "strong_answer": "s"} for n, r in questions]}
 
 
 def test_bands():
@@ -27,39 +28,74 @@ def test_bands():
     assert scoring.band(49) == "Moderate"
     assert scoring.band(55) == "Good"
     assert scoring.band(75) == "Excellent"
-    assert scoring.band(None) is None
 
 
 def test_quote_matching_is_verbatim_but_tolerant_of_punctuation():
-    assert scoring.quote_in_answer("which is which is an MCP platform", ANSWER)
-    assert scoring.quote_in_answer("I have hosted it over the Kubernetes.", ANSWER)
-    assert not scoring.quote_in_answer("I architected the whole Kubernetes cluster myself", ANSWER)
+    assert scoring.quote_in_answer("deployed the whole stack on Kubernetes", LONG)
+    assert scoring.quote_in_answer("I designed the workflow, and agent orchestration", LONG)
+    assert not scoring.quote_in_answer("I architected the whole Kubernetes cluster myself", LONG)
 
 
-def test_scores_evidence_and_overall_average():
-    raw = {"overall_summary": "x", "doing_well": ["a"], "improve": ["b"], "competencies": [
-        comp("role_alignment", [2, 0], ["To a— for making a platform", None]),
-        comp("technical_background", [3, 2], ["I have hosted it over the Kubernetes", "solved about 20 to 30 use cases"]),
-        # quote not in the transcript -> level forced to 0 (Not Assessed)
-        comp("impact_ownership", [3, 1], ["I single-handedly led a team of fifty", "which is which is"]),
-        comp("communication", [1, 1], ["which is which is an MCP", "So I have been assigned"]),
+def test_the_bad_interview_scores_weak():
+    """Reproduces the real report that wrongly came out at 48/100 'Moderate'."""
+    qs = [
+        q(1, "um By the way what do you call the system alo What are you already talking um How am I engineering "
+             "AI engineer don't you have anything to say I've completed my graduation from his t- honours and I'm "
+             "looking forward to work as AI engineer", "role_alignment"),
+        q(2, "Systems uh system", "role_alignment"),
+        q(3, "Research", "role_alignment"),
+        q(4, "", "technical_background"),
+        q(5, "I tend to use AI for editing videos", "technical_background"),
+        q(7, "um", "technical_background"),
+    ]
+    raw = {"overall_summary": "x", "doing_well": [], "improve": ["a"], "competencies": [
+        comp("role_alignment", [(1, 1, "looking forward to work as AI engineer"), (1, 2, "Systems uh system")],
+             [(1, "Weak"), (2, "Weak"), (3, "Weak")]),
+        # the model was lenient here: "Partially met" on a one-liner -> must be lowered to Not met
+        comp("technical_background", [(2, 5, "I tend to use AI for editing videos"), (0, 0, None)], [(5, "Moderate")]),
+        comp("impact_ownership", [(0, 0, None), (0, 0, None)]),
+        comp("communication", [(1, 1, "don't you have anything to say"), (1, 2, "Systems uh system")]),
     ]}
-    r = scoring.build_report(raw, PLAN, QUESTIONS, STATS)
+    r = scoring.build_report(raw, PLAN, qs, {"fluency_score": 3.0})
     c = {x["key"]: x for x in r["competencies"]}
-    assert c["role_alignment"]["score"] == 67               # one assessed expectation at 2/3
-    assert c["technical_background"]["score"] == 83         # (3+2)/6
-    io = c["impact_ownership"]
-    assert io["expectations"][0]["level"] == 0 and io["expectations"][0]["unverified_quotes_dropped"] == 1
-    assert io["score"] == 33
-    # communication: rubric 33 blended 70/30 with delivery 40
-    assert c["communication"]["rubric_score"] == 33 and c["communication"]["delivery_score"] == 40
-    assert c["communication"]["score"] == round(0.7 * 33 + 0.3 * 40)
-    scores = [x["score"] for x in r["competencies"]]
-    assert r["overall_score"] == round(sum(scores) / 4)
-    assert r["overall_band"] == scoring.band(r["overall_score"])
-    # invalid question numbers dropped from seen_in; rating normalised
-    assert c["role_alignment"]["improvements"][0]["seen_in"] == [2]
-    assert c["technical_background"]["questions"][0]["rating"] == "Moderate"
-    # every answered question gets a card somewhere (Q1 was forgotten by the model)
-    cards = [q["question"] for x in r["competencies"] for q in x["questions"]]
-    assert sorted(cards) == [1, 2]
+    assert c["technical_background"]["expectations"][0]["level"] == 1
+    assert "lowered" in c["technical_background"]["expectations"][0]["note"]
+    assert c["role_alignment"]["score"] == 10                       # two Not met
+    assert c["technical_background"]["score"] == 5                  # Not met + No evidence
+    assert c["impact_ownership"]["score"] == 0 and c["impact_ownership"]["band"] == "Not reached"
+    assert c["communication"]["score"] == round(0.7 * 10 + 0.3 * 30)
+    assert r["overall_score"] < 15 and r["overall_band"] == "Weak"
+    # a 7-word answer can't be rated better than Weak
+    assert c["technical_background"]["questions"][0]["rating"] == "Weak"
+
+
+def test_strong_interview_scores_well_and_gates_need_substance():
+    qs = [q(1, LONG, "role_alignment"), q(2, LONG, "technical_background"),
+          q(3, LONG, "impact_ownership"), q(4, LONG, "communication")]
+    quote = "deployed the whole stack on Kubernetes"
+    raw = {"overall_summary": "x", "doing_well": ["a"], "improve": ["b"], "competencies": [
+        comp(k, [(3, n, quote), (2, n, quote)], [(n, "Excellent")]) for n, k in enumerate(COMPETENCY_KEYS, 1)]}
+    r = scoring.build_report(raw, PLAN, qs, {"fluency_score": 8.0})
+    c = {x["key"]: x for x in r["competencies"]}
+    assert c["technical_background"]["score"] == round((100 + 45) / 2)
+    assert c["technical_background"]["questions"][0]["rating"] == "Excellent"
+    assert r["overall_band"] == "Good"
+
+
+def test_fabricated_quotes_are_dropped():
+    qs = [q(1, LONG, "impact_ownership")]
+    raw = {"competencies": [comp("impact_ownership", [(3, 1, "I single-handedly led a team of fifty"), (0, 0, None)])]}
+    r = scoring.build_report(raw, PLAN, qs, {"fluency_score": None})
+    e = r["competencies"][2]["expectations"][0]
+    assert e["level"] == 0 and e["unverified_quotes_dropped"] == 1 and e["label"] == "No evidence"
+
+
+def test_seen_in_filtered_and_forgotten_questions_get_cards():
+    qs = [q(1, LONG, "role_alignment"), q(2, "short answer here", "technical_background")]
+    raw = {"competencies": [comp("role_alignment", [(2, 1, "deployed the whole stack on Kubernetes")], [(1, "good")])]}
+    r = scoring.build_report(raw, PLAN, qs, {"fluency_score": 5.0})
+    c = {x["key"]: x for x in r["competencies"]}
+    assert c["role_alignment"]["improvements"][0]["seen_in"] == [1]
+    assert c["role_alignment"]["questions"][0]["rating"] == "Good"
+    assert [x["question"] for x in c["technical_background"]["questions"]] == [2]
+    assert c["technical_background"]["questions"][0]["rating"] == "Weak"

@@ -38,10 +38,13 @@ Message = dict[str, str]  # {"role": "user" | "assistant", "content": str}
 
 
 async def chat(system: str, messages: list[Message], json_mode: bool = True,
-               max_tokens: int = 2048, settings: Settings | None = None, timeout: float | None = None) -> Any:
+               max_tokens: int = 2048, settings: Settings | None = None, timeout: float | None = None,
+               model: str | None = None) -> Any:
     s = settings or get_settings()
     if timeout:
         s = s.model_copy(update={"llm_timeout_seconds": max(timeout, s.llm_timeout_seconds)})
+    if model:
+        s = s.model_copy(update={"llm_model": model})
     if not s.resolved_llm_key and not (s.llm_provider == "openai" and s.llm_base_url):
         raise LLMError(f"No API key for LLM provider '{s.llm_provider}'. Add it to backend/.env.")
 
