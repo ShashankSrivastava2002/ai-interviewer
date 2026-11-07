@@ -55,6 +55,49 @@ COMPETENCIES: list[dict[str, str]] = [
 ]
 COMPETENCY_KEYS = [c["key"] for c in COMPETENCIES]
 
+# Recruiter-standard expectations used in EVERY interview (what a real screen checks). The planner adds
+# 1–2 role/JD-specific ones per section on top. These test what the candidate explicitly SAYS, so a
+# strong engineer who never states their fit, uses "we" throughout, or rambles is scored accordingly.
+STANDARD_EXPECTATIONS: dict[str, list[str]] = {
+    "role_alignment": [
+        "Explicitly connects their past work to this role's requirements in their own words, so the recruiter doesn't have to infer the fit",
+        "States a clear value proposition: what they personally would bring to this team or role, and why",
+        "Gives a specific, credible motivation for the move and why this role is the logical next step",
+        "Shows awareness of, or research into, the hiring company, its product or domain",
+    ],
+    "technical_background": [
+        "Explains how a system they built actually works (architecture, components, data flow) accurately and concretely",
+        "Justifies technical decisions with trade-offs or alternatives considered",
+        "Explains how they measured quality or correctness (evals, metrics, ground truth, test sets) with specifics",
+        "Discusses limitations, failure modes, or what they would do differently",
+    ],
+    "impact_ownership": [
+        "Uses 'I' to make their personal contribution clearly distinct from the team's work",
+        "Quantifies outcomes, including business impact (cost, time saved, revenue, users), not only technical metrics",
+        "Describes a decision or initiative they owned end-to-end, including follow-through after launch",
+    ],
+    "communication": [
+        "Leads answers with a clear headline or direct answer before the details",
+        "Structures answers logically (e.g. situation, action, result) and stays on the question asked",
+        "Is concise: no rambling, circling back or point-less lists",
+        "Delivery doesn't distract: few fillers, repetitions and false starts; professional language throughout",
+    ],
+}
+MAX_TAILORED = 2
+
+
+def full_plan(plan: dict[str, Any] | None) -> dict[str, Any]:
+    """Standard expectations first, then up to MAX_TAILORED role-specific ones per section."""
+    by_key = {s.get("key"): s for s in (plan or {}).get("sections", [])}
+    out = {"sections": []}
+    for c in COMPETENCIES:
+        s = by_key.get(c["key"], {})
+        std = STANDARD_EXPECTATIONS[c["key"]]
+        extra = [e for e in s.get("expectations", []) if e not in std][:MAX_TAILORED]
+        out["sections"].append({"key": c["key"], "expectations": std + extra,
+                                "sample_questions": s.get("sample_questions", [])})
+    return out
+
 INTERVIEW_TYPES = {
     "technical": "a technical screen (hands-on experience, how systems work, technical decisions and trade-offs)",
     "behavioural": "an HR & behavioural screen (motivation, teamwork, conflict, ownership; expect STAR answers)",
@@ -100,8 +143,11 @@ Length: {minutes} minutes{_tailor(ctx)}
 Build an interview plan with exactly these four sections (keys fixed):
 {comp}
 
-For each section write 2–3 EXPECTATIONS: specific, observable things a strong {level} candidate for this role would
-demonstrate, phrased so a reviewer can judge them from a transcript (e.g. "Explains why they chose a DAG-based
+Every interview already checks these standard recruiter expectations (do NOT repeat them):
+{json.dumps(STANDARD_EXPECTATIONS, indent=1)}
+
+For each section add 1–2 EXTRA expectations specific to THIS role, level and job description: observable things a
+strong {level} candidate would demonstrate, phrased so a reviewer can judge them from a transcript (e.g. "Explains why they chose a DAG-based
 orchestration over a linear agent chain, with the trade-offs"). Base them on the job description's requirements
 when given, probe the projects on the resume, and use the additional notes for company/domain context. Also give 2
 sample questions per section (spoken style, under 40 words each).
@@ -182,44 +228,66 @@ You receive:
 2. The interview PLAN: four competency sections, each with expectations that have ids like "role_alignment.1".
 3. Every question numbered "Question N" (follow-ups are numbered too) with the candidate's VERBATIM answer. Fillers
    (um, uh), repetitions, false starts ("to a—") and pauses ("…") are exactly as spoken.
-4. Delivery statistics computed by software (fillers, pauses, pace). These are exact: use them as given, never recount.
+4. MEASURED FACTS computed by software: fillers/min, repetitions and false starts, pauses, pace, "I" vs "we" share,
+   real words per answer, and per-answer disfluencies per 100 words. These are exact: use them as given, never recount.
+   Your scores are FINAL — no software adjusts them afterwards — so apply every boundary below yourself.
 
-HOW TO SCORE (strict, evidence-based):
-- Score EVERY expectation in the plan on this scale:
-    3 = Met            concrete evidence: clarity, ownership, structured reasoning, specific examples
-    2 = Partially Met  some relevant evidence, but lacking depth or specificity
-    1 = Not Met        incorrect reasoning, or only vague, theoretical answers
-    0 = No evidence    no relevant moment exists in the transcript (do NOT guess).
-- For every expectation also set "probed": true if the interviewer asked about it (directly or via a question whose
-  good answer would have shown it), false if the interview never touched it. Probed-but-no-evidence earns ZERO points
-  (the candidate had the chance and didn't show it); not-probed expectations are left out of the score.
-- Every score of 1–3 MUST cite at least one evidence quote: an exact, word-for-word substring of that question's
-  answer (3–30 words, copied verbatim including fillers). Never paraphrase inside a quote. If you cannot quote it,
-  the score is 0.
-- CALIBRATION — be a strict, realistic recruiter. Inflated scores are a failure of your job:
-    * Level 3 is rare: a complete, specific, first-person answer with concrete details/numbers that fully meets the
-      expectation.
-    * Level 2 = relevant and technically correct, but thin: generic, few specifics or numbers, "we" without the
-      candidate's own part, or only part of the expectation covered. A typical average answer is level 2.
-    * Level 1 = vague to the point of saying nothing, incorrect, or only name-drops the topic in a sentence.
-    * One-line, evasive, off-topic, confused, joking or non-answers ("Systems… system.", "um", silence) are level 1
-      at best for anything they touch, and give NO evidence for anything else.
-    * Asking the interviewer what to say, refusing, or not understanding the question is level 1.
-    * Unprofessional or offensive language is a serious red flag: level 1 for the communication and role-alignment
-      expectations it touches; call it out plainly (without repeating slurs) in the assessment and summary.
-    * Do not give credit for what the candidate might know. Score only what they actually said.
-- Ratings for each question follow the same scale: Weak (non-answer / wrong / vague), Moderate (relevant but thin),
-  Good (specific and correct), Excellent (specific, structured, quantified, clearly owned).
-- "doing_well" and "strengths" must be genuine. If nothing was done well, return an empty list — never pad with
-  generic praise like "expressed interest". The overall_summary must state plainly how the interview went.
-- Judge content separately from delivery. Delivery (fillers, false starts, pauses, rambling, "we" vs "I") belongs
-  under communication; technical depth belongs under technical_background even if delivery was poor.
+HOW TO SCORE — be a strict, calibrated recruiter. Do NOT be generous, do NOT reward effort, politeness or potential.
+Score only what was actually DEMONSTRATED in the transcript.
+
+Step 1 — Expectations. Rate EVERY expectation in the plan:
+    3 = Met            the candidate did it EXPLICITLY, clearly and concisely, largely unprompted
+    2 = Partially Met  relevant evidence exists but is implied, buried in rambling, incomplete, or only came out
+                       after the interviewer had to pull it out with follow-ups
+    1 = Not Met        the topic came up but the answer was wrong, vague, generic, theoretical or only "we"
+    0 = Not Assessed   nothing relevant in the transcript (the candidate never demonstrated it)
+  Be strict about what was SAID, not what a reader can infer: a strong project described mostly with "we" does not
+  meet the "I" expectation; technical metrics (latency, tokens) are not business impact; describing your work is not
+  the same as connecting it to this role; never asking or saying anything about the company is level 0 or 1.
+  Level 3 should be uncommon — reserve it for answers a recruiter could repeat back as a crisp example. An
+  explanation that is rambling, heavily repeated or hard to follow (see that answer's delivery stats) is at most 2,
+  however good the underlying work. Use the measured "pronouns" statistic (how often they said I vs we) as given.
+  Every level 1–3 MUST cite an evidence quote: an exact, word-for-word substring of that question's answer (3–30 words,
+  copied verbatim including fillers). Never paraphrase inside a quote. No quote -> level 0.
+
+Step 2 — Competency score 0–100, using this anchored scale (the same bands the report shows):
+     0–14  Nothing usable: silence, filler-only, refusal, off-topic, confused, or inappropriate/offensive answers
+    15–29  WEAK: minimal or very vague answers; the competency was essentially not demonstrated
+    30–49  MODERATE: some relevant evidence, but generic, shallow, unstructured or missing key specifics
+    50–74  GOOD: concrete and specific; mostly complete with some gaps (real examples, decisions, numbers)
+    75–89  EXCELLENT: strong, specific, quantified, clear personal ownership and reasoning throughout
+    90–100 Exceptional; very rare
+  Calibration: a typical real candidate scores 40–60. A technically strong engineer who rambles, relies on "we",
+  never states their fit or value, and needs follow-ups to get to the point lands around 40–60 overall, not 70+.
+  Scores above 70 require crisp, structured, explicit answers throughout that competency. One short answer can never justify GOOD. A competency with no
+  level-2 or level-3 expectation cannot be above 30. Silence, "um", "[breath]", one-word, off-topic or offensive
+  answers count as zero evidence. Unprofessional or offensive language must lower Communication & Clarity and be
+  named plainly in the assessment. Short sessions with little speech must score low — missing evidence is a failure
+  to demonstrate, not a reason to be lenient.
+  HARD BOUNDARIES (apply all of them; the lowest applicable limit wins):
+    - No expectation at level 2 or 3 in a competency -> its score is at most 30. No evidence at all -> at most 25.
+    - Best expectation only Partially Met (no level 3) -> at most 60.
+    - An answer with >= 8 disfluencies per 100 words (see "disfluencies_per_100_words") cannot be the evidence for a
+      level 3: the work may be good but it was buried; rate it 2.
+    - "I" share under 50% of first-person pronouns -> the "uses 'I'" expectation is at most level 1 and
+      Impact & Ownership is at most 60.
+    - Communication & Clarity: fillers >= 8/min or repetitions+false starts >= 6/min -> at most 39;
+      fillers >= 5/min or repetitions+false starts >= 4/min -> at most 49; answers averaging under 15 real words
+      -> at most 25.
+    - Near-empty answers (under 6 real words) are always rated Weak.
+  Write "score_rationale": 2–3 sentences explaining exactly why this number — which expectations were met or missed,
+  citing question numbers — so the score is understandable on its own.
+
+Step 3 — Judge content separately from delivery. Delivery (fillers, false starts, pauses, rambling, "we" vs "I",
+  professionalism) belongs under communication; technical depth belongs under technical_background even if delivery
+  was poor. Use the delivery statistics as given.
 
 WRITING THE REPORT:
 - Be specific to what they actually said: name their projects, numbers and phrases. Kind, direct, practical.
 - "seen_in" lists question numbers (integers) where the point is visible.
 - Assign EVERY answered question to exactly one competency (its main focus) in that competency's "questions" list,
-  with a rating band (Weak | Moderate | Good | Excellent), "verdict" (why it needs improvement, or why it worked if
+  with a rating band on the same scale (Weak | Moderate | Good | Excellent; empty, silent, one-line or off-topic
+  answers are always Weak), "verdict" (why it needs improvement, or why it worked if
   Good/Excellent; 1–3 sentences), and "strong_answer" (a first-person model answer built from THEIR real experience,
   headline first, 4–7 sentences, spoken style; never invent achievements they did not mention — use placeholders
   like "[metric]" if needed).
@@ -227,20 +295,22 @@ WRITING THE REPORT:
 Reply with JSON only, exactly this shape:
 {
   "overall_summary": "one paragraph (4–6 sentences) on overall performance",
-  "doing_well": ["2–3 short headline phrases"],
+  "doing_well": ["0–3 short headline phrases — only real strengths; leave it empty rather than inventing praise"],
   "improve": ["3 short headline phrases"],
   "competencies": [
     {
       "key": "role_alignment" | "technical_background" | "impact_ownership" | "communication",
+      "score": 0-100,
+      "score_rationale": "2–3 sentences: why exactly this score, citing question numbers",
       "assessment": "3–5 sentences: what you observed for this competency",
-      "expectations": [{"id": "role_alignment.1", "level": 0-3, "probed": true, "evidence": [{"question": 2, "quote": "exact words"}]}],
+      "expectations": [{"id": "role_alignment.1", "level": 0-3, "evidence": [{"question": 2, "quote": "exact words"}]}],
       "improvements": [{"title": "short imperative", "detail": "2–4 sentences", "seen_in": [7]}],
       "strengths": [{"title": "short", "detail": "2–4 sentences", "seen_in": [2]}],
       "questions": [{"question": 7, "rating": "Moderate", "verdict": "...", "strong_answer": "..."}]
     }
   ]
 }
-Give 1–3 improvements and 1–3 strengths per competency (strengths may be empty if there is truly nothing)."""
+Give 1–3 improvements and 0–3 strengths per competency (leave strengths empty when nothing was genuinely good)."""
 
 
 def plan_for_prompt(plan: dict[str, Any]) -> list[dict[str, Any]]:
@@ -263,7 +333,7 @@ def report_user_message(setup: dict[str, Any], plan: dict[str, Any], questions: 
         "INTERVIEW SETUP", json.dumps(setup, ensure_ascii=False), "",
         "CONTEXT" + (_tailor(ctx) or "\n(none provided)"), "",
         "INTERVIEW PLAN", json.dumps(plan_for_prompt(plan), ensure_ascii=False), "",
-        "DELIVERY STATISTICS (exact, computed by software)", json.dumps(session_stats, ensure_ascii=False), "",
+        "MEASURED FACTS — WHOLE INTERVIEW (exact, computed by software)", json.dumps(_session_facts(session_stats, questions), ensure_ascii=False), "",
         "QUESTIONS AND VERBATIM ANSWERS",
     ]
     for q in questions:
@@ -277,10 +347,35 @@ def report_user_message(setup: dict[str, Any], plan: dict[str, Any], questions: 
             lines.append(f"Answer (verbatim): {q['verbatim'] or '(no speech detected)'}")
             st = q.get("stats") or {}
             if st:
-                lines.append("Delivery for this answer: " + json.dumps({
+                d = st["fillers"]["total"] + st["repetitions"] + st["false_starts"] + st["stammers"]
+                pr = st.get("pronouns") or {}
+                lines.append("Measured facts for this answer: " + json.dumps({
+                    "real_words": st["word_count"],
+                    "disfluencies_per_100_words": round(100 * d / max(st["word_count"], 1), 1),
+                    "i_count": pr.get("i"), "we_count": pr.get("we"),
                     "fillers": st["fillers"]["total"], "filler_words": st["fillers"]["counts"],
                     "stammers": st["stammers"], "repetitions": st["repetitions"], "false_starts": st["false_starts"],
                     "pauses": st["pauses"]["count"], "longest_pause_s": st["pauses"]["longest"],
                     "wpm": st["wpm"], "thinking_time_s": st["thinking_time"],
                 }))
     return "\n".join(lines)
+
+
+def _session_facts(st: dict[str, Any], questions: list[dict[str, Any]]) -> dict[str, Any]:
+    """Session stats plus the derived rates the hard boundaries refer to."""
+    minutes = max((st.get("total_spoken_seconds") or 0) / 60.0, 1e-6)
+    asked = [q for q in questions if q.get("skipped") or q.get("verbatim") is not None]
+    words = [((q.get("stats") or {}).get("word_count") or 0) for q in asked]
+    return {
+        **st,
+        "repetitions_plus_false_starts_per_minute": round(((st.get("repetitions") or 0) + (st.get("false_starts") or 0)
+                                                           + (st.get("stammers") or 0)) / minutes, 1),
+        "avg_real_words_per_answer": round(sum(words) / len(words), 1) if words else 0,
+        "questions_answered": sum(1 for q in asked if not q.get("skipped")),
+        "questions_skipped": sum(1 for q in asked if q.get("skipped")),
+    }
+
+
+def standard_plan() -> dict[str, Any]:
+    """The fixed rubric every report is scored against (same expectations for every candidate)."""
+    return {"sections": [{"key": c["key"], "expectations": list(STANDARD_EXPECTATIONS[c["key"]])} for c in COMPETENCIES]}

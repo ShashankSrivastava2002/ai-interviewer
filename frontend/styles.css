@@ -844,9 +844,13 @@ body { font-family: var(--font); font-size: 15px; letter-spacing: -.003em; }
   .breakdown .tab-panel { display: block !important; }
 }
 
-/* strict scoring additions */
-.band.b-not-reached { background: var(--surface-2); color: var(--muted); }
-.exp-note { margin: 4px 0 0; font-size: .8rem; color: var(--warn); }
+/* score rationale + notices */
+.why-score { background: var(--surface-2); border-radius: 10px; padding: 12px 14px; margin: 4px 0 16px; font-size: .92rem; line-height: 1.6; }
+.cap-note { display: inline-block; margin-left: 4px; color: var(--band-mod-fg); background: var(--band-mod-bg); border-radius: 6px; padding: 1px 8px; font-size: .82rem; }
+.notice { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; background: var(--band-mod-bg); color: var(--band-mod-fg); border-radius: 10px; padding: 12px 16px; margin-bottom: 14px; font-size: .92rem; }
+
+.exp-list blockquote.unverified { opacity: .6; text-decoration: line-through; text-decoration-thickness: 1px; }
+.band.b-not { background: var(--surface-2); color: var(--muted); }
 
 /* ---------- responsive ---------- */
 @media (max-width: 720px) {

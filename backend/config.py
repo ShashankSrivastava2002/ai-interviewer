@@ -15,6 +15,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 BACKEND_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = BACKEND_DIR.parent
 
+# Report (scoring) model per provider when REPORT_LLM_MODEL is empty: the largest available.
+DEFAULT_REPORT_MODELS = {
+    "gemini": "gemini-3.1-pro-preview",
+    "anthropic": "claude-opus-5-5",
+}
+
 # Sensible default model per LLM provider, used when LLM_MODEL is left empty.
 DEFAULT_LLM_MODELS = {
     "openai": "gpt-4.1-mini",
@@ -42,8 +48,8 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     gemini_api_key: str = ""
     llm_timeout_seconds: float = 120.0
-    # Optional stronger/stricter model just for the feedback report (e.g. gemini-2.5-pro, claude-opus-5-5).
-    llm_report_model: str = ""
+    # Large model for the feedback report (scores are taken as final). Empty = provider default below.
+    report_llm_model: str = ""
 
     # ---------- Speech-to-text ----------
     stt_provider: Literal["local", "deepgram", "assemblyai", "openai"] = "local"
@@ -76,6 +82,11 @@ class Settings(BaseSettings):
     @property
     def resolved_llm_model(self) -> str:
         return self.llm_model or DEFAULT_LLM_MODELS[self.llm_provider]
+
+    @property
+    def resolved_report_model(self) -> str:
+        """Model that writes and scores the feedback report (a large model; its scores are final)."""
+        return self.report_llm_model or DEFAULT_REPORT_MODELS.get(self.llm_provider) or self.resolved_llm_model
 
     @property
     def resolved_llm_key(self) -> str:

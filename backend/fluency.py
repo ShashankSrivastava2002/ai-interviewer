@@ -14,11 +14,28 @@ thinking time   recording start -> first word
 """
 from __future__ import annotations
 
+import re
 from collections import Counter
 from typing import Any
 
+# First-person pronouns: how much the candidate speaks as "I" vs "we" (ownership signal).
+_I_WORDS = {"i", "me", "my", "mine", "myself", "i'm", "i've", "i'd", "i'll"}
+_WE_WORDS = {"we", "us", "our", "ours", "ourselves", "we're", "we've", "we'd", "we'll"}
+
+
+def pronoun_counts(tokens: list[dict[str, Any]]) -> dict[str, int]:
+    i = we = 0
+    for t in tokens:
+        if t["kind"] == "pause":
+            continue
+        w = re.sub(r"[^a-z']", "", (t.get("norm") or t["text"]).lower().replace("’", "'"))
+        if w in _I_WORDS:
+            i += 1
+        elif w in _WE_WORDS:
+            we += 1
+    return {"i": i, "we": we}
+
 IDEAL_WPM = (120, 160)
-NEAR_EMPTY_WORDS = 5
 
 SPOKEN_KINDS = ("word", "repetition", "stammer", "false_start")
 
@@ -80,6 +97,7 @@ def answer_stats(tokens: list[dict[str, Any]], thinking_time: float | None, audi
             "silent_pct": round(100.0 * pause_time / span, 1) if span > 0 else 0.0,
         },
         "wpm": round(content_words / (speaking / 60.0)) if speaking > 1.0 else 0,
+        "pronouns": pronoun_counts(tokens),
     }
     stats["fluency_score"] = fluency_score(stats) if content_words >= 3 else None
     return stats
@@ -88,7 +106,7 @@ def answer_stats(tokens: list[dict[str, Any]], thinking_time: float | None, audi
 def fluency_score(s: dict[str, Any]) -> float:
     """
     0–10 score from transparent penalties (shown in the README):
-      fillers           -0.25 per filler/min above 2/min        (max -5)
+      fillers           -0.35 per filler/min above 2/min        (max -3)
       stammers/reps/FS  -0.5 per event/min                      (max -2.5)
       silence           -0.06 per % silent above 15%            (max -2)
       long pauses       -0.3 per pause >= 1.5 s                 (max -1.5)
@@ -96,7 +114,7 @@ def fluency_score(s: dict[str, Any]) -> float:
     """
     minutes = max(s["spoken_seconds"] / 60.0, 1 / 60)
     score = 10.0
-    score -= min(5.0, max(0.0, s["fillers"]["per_minute"] - 2.0) * 0.25)
+    score -= min(3.0, max(0.0, s["fillers"]["per_minute"] - 2.0) * 0.35)
     events = (s["stammers"] + s["repetitions"] + s["false_starts"]) / minutes
     score -= min(2.5, events * 0.5)
     score -= min(2.0, max(0.0, s["pauses"]["silent_pct"] - 15.0) * 0.06)
@@ -123,10 +141,7 @@ def session_stats(per_answer: list[dict[str, Any]]) -> dict[str, Any]:
     pause_counts = sum(a["stats"]["pauses"]["count"] for a in answered)
     pause_time = sum(a["stats"]["pauses"]["total_seconds"] for a in answered)
     thinking = [a["stats"]["thinking_time"] for a in answered]
-    # Near-empty answers ("um", a breath, two words) count as 0 — silence is not fluent delivery.
-    scores = [a["stats"]["fluency_score"] if (a["stats"].get("fluency_score") is not None
-                                             and a["stats"].get("word_count", 0) >= NEAR_EMPTY_WORDS) else 0.0
-              for a in answered]
+    scores = [a["stats"]["fluency_score"] for a in answered if a["stats"].get("fluency_score") is not None]
 
     return {
         "answers": len(answered),
@@ -148,9 +163,16 @@ def session_stats(per_answer: list[dict[str, Any]]) -> dict[str, Any]:
         "avg_thinking_time": round(sum(thinking) / len(thinking), 2) if thinking else 0.0,
         "wpm": round(total_words / (total_speaking / 60.0)) if total_speaking > 1 else 0,
         "ideal_wpm": list(IDEAL_WPM),
+        "pronouns": _pronoun_summary(answered),
         "fluency_score": round(sum(scores) / len(scores), 1) if scores else None,
         "trend": [
             {"question_id": a["question_id"], "index": a["index"], "score": a["stats"].get("fluency_score")}
             for a in answered
         ],
     }
+
+
+def _pronoun_summary(answered: list[dict[str, Any]]) -> dict[str, Any]:
+    i = sum((a["stats"].get("pronouns") or {}).get("i", 0) for a in answered)
+    we = sum((a["stats"].get("pronouns") or {}).get("we", 0) for a in answered)
+    return {"i": i, "we": we, "i_share_pct": round(100 * i / (i + we)) if (i + we) else None}

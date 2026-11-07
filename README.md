@@ -129,18 +129,11 @@ The flow follows the published design of recruiter-style AI screens (e.g. Hacker
 3. **Scoring:** each expectation is scored **3 Met, 2 Partially met, 1 Not met, 0 Not assessed**.
    - Every score must quote your **exact words**. `scoring.py` checks each quote against the transcript.
    - A quote that can't be found is dropped. An expectation with no valid quote becomes *Not Assessed*.
-4. **Numbers, all computed in Python (strict):**
-   - Each expectation earns **Met 100 · Partially met 45 · Not met 10 · No evidence 0**.
-     "No evidence" counts as zero, because if you didn't show it, you get no credit for it.
-   - **Substance gates:** a level only counts if a cited answer is long enough: Met needs 40+ content words and
-     Partially met needs 20+. Otherwise the level is lowered. Question ratings are capped too: under 15 words is Weak,
-     under 35 is Moderate at most.
-   - **Competency score:** the average of its expectations. A section the interview never reached scores 0 ("Not reached").
-   - **Communication & Clarity:** rubric × (0.5 + 0.5 × delivery/100). Fluent speech keeps the full score; heavy fillers
-     and pauses can halve it. Delivery never *adds* points. Near-empty answers count as 0 delivery.
-   - Expectations the interview never asked about are "Not probed" and excluded; asked-but-unanswered ones score 0.
-   - **Overall:** the plain average of all four competencies. Bands: Weak < 30 ≤ Moderate < 50 ≤ Good < 75 ≤ Excellent.
-   - Optional `LLM_REPORT_MODEL` in `.env` uses a stronger model just for grading (e.g. `gemini-2.5-pro`).
+4. **Numbers, all computed in Python:**
+   - **Competency score:** average assessed level ÷ 3 × 100.
+   - **Communication & Clarity:** blends 70% of that rubric score with 30% of the delivery score measured from your audio (fillers, pauses, pace).
+   - **Overall score:** the plain average of the four competency scores.
+   - **Bands:** Weak < 30 ≤ Moderate < 50 ≤ Good < 75 ≤ Excellent.
 5. **Report:**
    - Overall score with its band
    - The four competency scores

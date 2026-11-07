@@ -1170,7 +1170,7 @@ const REPORT_TITLE = {
   behavioural: "HR & Behavioural Screen Feedback",
   mixed: "Screening Interview Feedback",
 };
-const bandCls = (b) => `b-${String(b || "none").toLowerCase().replace(/\s+/g, "-")}`;
+const bandCls = (b) => `b-${String(b || "none").toLowerCase()}`;
 
 async function openReport(id) {
   const root = $("#report-root");
@@ -1185,7 +1185,7 @@ async function openReport(id) {
       return;
     }
   }
-  if (!detail.report || detail.report.version !== 2) {
+  if (!detail.report || (detail.report.version || 1) < 2) {
     const legacy = !!detail.report;
     root.innerHTML = `
       <p class="eyebrow">${esc(detail.role)}</p>
@@ -1284,16 +1284,15 @@ function evidenceHTML(c) {
   const lv = (e) => `<span class="lvl lvl-${e.level}">${esc(e.label)}</span>`;
   return `<details class="evidence">
     <summary>How this score was calculated</summary>
-    <p class="muted small">Each expectation earns <b>Met 100 · Partially met 45 · Not met 10 · No evidence 0</b>.
-      Every level must quote your exact words, and short answers can't earn Met (needs 40+ words) or Partially met (20+).
-      Expectations the interview never asked about are marked "Not probed" and left out.
-      Score = average of the expectations${c.key === "communication"
-        ? `, then scaled by your measured delivery: rubric ${c.rubric_score ?? 0} × (0.5 + 0.5 × delivery ${c.delivery_score ?? 0}/100). Fluent speech keeps the full score; heavy fillers and pauses can halve it` : ""}.</p>
+    <p class="muted small">A large reviewer model rates each expectation (3 Met · 2 Partially met · 1 Not met · 0 Not assessed),
+      quoting your exact words, and sets the 0–100 score on a strict scale (Weak &lt; 30 ≤ Moderate &lt; 50 ≤ Good &lt; 75 ≤ Excellent)
+      using measured facts — fillers per minute, repetitions, “I” vs “we”, words per answer. Its score is final; the
+      software only checks that each quote really appears in your transcript and flags any that don't.
+      ${c.unverified_quotes ? `<b>${c.unverified_quotes} quote${c.unverified_quotes > 1 ? "s" : ""} below couldn't be found in your transcript.</b>` : ""}</p>
     <ul class="exp-list">${c.expectations.map((e) => `
       <li>
         <div class="exp-row"><span>${esc(e.text)}</span>${lv(e)}</div>
-        ${e.note ? `<p class="exp-note">${esc(e.note)}</p>` : ""}
-        ${(e.evidence || []).map((ev) => `<blockquote>“${esc(ev.quote)}” <button type="button" class="q-chip" data-goto="${ev.question}">Question ${ev.question}</button></blockquote>`).join("")}
+        ${(e.evidence || []).map((ev) => `<blockquote class="${ev.verified === false ? "unverified" : ""}">“${esc(ev.quote)}” ${ev.question != null ? `<button type="button" class="q-chip" data-goto="${ev.question}">Question ${ev.question}</button>` : ""}${ev.verified === false ? ' <span class="cap-note">not found in transcript</span>' : ""}</blockquote>`).join("")}
       </li>`).join("")}</ul>
   </details>`;
 }
@@ -1367,6 +1366,8 @@ function renderReport(d) {
 
   $("#report-root").innerHTML = `
     <a class="back-link no-print" href="#/history">${ICON.back} Back</a>
+    ${(r.version || 2) < 4 ? `<div class="notice no-print">This report was scored with an older method.
+      <button type="button" class="btn btn-primary btn-sm" id="regen-top">Regenerate with strict scoring</button></div>` : ""}
 
     <article class="card report-main">
       <h1 class="report-title">${esc(REPORT_TITLE[d.interview_type] || "Interview Feedback")}</h1>
@@ -1378,7 +1379,7 @@ function renderReport(d) {
           ${gaugeHTML(r.overall_score, r.overall_band)}
         </div>
         <div class="comp-tiles">
-          ${comps.map((c) => `<button type="button" class="score-box comp-tile" data-tab="${c.key}">
+          ${comps.map((c) => `<button type="button" class="score-box comp-tile" data-tab="${c.key}" title="${esc(c.score_rationale || "")}">
               <h3>${esc(c.name)}</h3>
               <div class="tile-foot"><span><b>${c.score ?? "—"}</b> <small>/100</small></span><span class="band ${bandCls(c.band)}">${esc(c.band || "Not assessed")}</span></div>
             </button>`).join("")}
@@ -1389,7 +1390,7 @@ function renderReport(d) {
       <p class="prose">${esc(r.overall_summary)}</p>
 
       <div class="grid-2 lists">
-        <div><h2 class="h-sec">What You Are Doing Well</h2>${r.doing_well?.length ? iconList(r.doing_well, "good") : '<p class="muted">Nothing stood out as a strength in this interview.</p>'}</div>
+        <div><h2 class="h-sec">What You Are Doing Well</h2>${iconList(r.doing_well, "good")}</div>
         <div><h2 class="h-sec">Top Things You Can Improve</h2>${iconList(r.improve, "up")}</div>
       </div>
     </article>
@@ -1424,6 +1425,8 @@ function renderReport(d) {
       <div class="tab-panel" role="tabpanel" data-panel="${c.key}" ${i === 0 ? "" : "hidden"}>
         <div class="panel-head"><h3 class="panel-title">${esc(c.name)}</h3>
           <div class="panel-score"><b>${c.score ?? "—"}</b><small>/100</small><span class="band ${bandCls(c.band)}">${esc(c.band || "Not assessed")}</span></div></div>
+        ${c.score_rationale ? `<div class="why-score"><b>Why ${c.score ?? "—"}/100:</b> ${esc(c.score_rationale)}${c.cap_reason ? ` <span class="cap-note">${esc(c.cap_reason)}</span>` : ""}</div>`
+          : c.cap_reason ? `<div class="why-score"><span class="cap-note">${esc(c.cap_reason)}</span></div>` : ""}
         <p class="prose">${esc(c.description)} ${esc(c.assessment)}</p>
         ${c.improvements?.length ? `<h4 class="h-sub">Where You Can Improve</h4>${itemsHTML(c.improvements, "improve")}` : ""}
         ${c.strengths?.length ? `<h4 class="h-sub">What You Are Doing Well</h4>${itemsHTML(c.strengths, "good")}` : ""}
@@ -1436,7 +1439,7 @@ function renderReport(d) {
     <div class="actions">
       <button class="btn btn-primary" id="act-retry">Retry same questions</button>
       <a class="btn btn-secondary" href="#/setup">New interview</a>
-      <button class="btn btn-ghost" id="act-regen" title="Score this interview again with the current rules">Regenerate report</button>
+      <button class="btn btn-ghost" id="act-regen" title="Re-run the reviewer on the same transcript">Regenerate report</button>
       <button class="btn btn-ghost" id="act-pdf">Download PDF</button>
       <button class="btn btn-ghost" id="act-csv">Download CSV</button>
       <button class="btn btn-ghost" id="act-txt">Download verbatim .txt</button>
@@ -1563,7 +1566,8 @@ function wireReport(d) {
   wireTranscripts(".qa");
   $("#act-retry").onclick = () => { beginCreate({ retry_of: d.id }); location.hash = "#/mic"; };
   $("#act-pdf").onclick = () => window.print();
-  $("#act-regen").onclick = () => { delete state.detailCache[d.id]; generateFeedback(d.id, true); };
+  $("#act-regen").onclick = () => generateFeedback(d.id, true);
+  $("#regen-top")?.addEventListener("click", () => generateFeedback(d.id, true));
   $("#act-csv").onclick = () => download(`interview-${d.id}.csv`, reportCsv(d), "text/csv");
   $("#act-txt").onclick = () => download(`interview-${d.id}-verbatim.txt`, verbatimTxt(d), "text/plain");
   $("#act-json").onclick = () => download(`interview-${d.id}.json`, JSON.stringify(d, null, 2), "application/json");

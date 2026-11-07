@@ -259,7 +259,8 @@ def ctx_of(sess: db.InterviewSession) -> dict[str, Optional[str]]:
 
 
 def session_plan(sess: db.InterviewSession) -> Optional[dict[str, Any]]:
-    return json.loads(sess.plan_json) if sess.plan_json else None
+    """The stored plan, always including the standard recruiter expectations."""
+    return prompts.full_plan(json.loads(sess.plan_json)) if sess.plan_json else None
 
 
 def elapsed_seconds(sess: db.InterviewSession, qs: list[db.Question]) -> float:
@@ -394,18 +395,15 @@ async def analyse_audio(src: Path, wav: Path) -> dict[str, Any]:
 
 async def make_plan(sess: db.InterviewSession) -> dict[str, Any]:
     system = prompts.planner_system(sess.role, sess.level, sess.interview_type, sess.duration_minutes, ctx_of(sess))
-    raw = await llm.chat(system, [{"role": "user", "content": "Create the interview plan."}], json_mode=True,
-                         max_tokens=8000, temperature=0.2)
+    raw = await llm.chat(system, [{"role": "user", "content": "Create the interview plan."}], json_mode=True, max_tokens=2500)
     by_key = {s.get("key"): s for s in (raw.get("sections") or [])} if isinstance(raw, dict) else {}
     plan = {"sections": []}
     for c in prompts.COMPETENCIES:
         s = by_key.get(c["key"], {})
-        exps = [str(e) for e in (s.get("expectations") or []) if str(e).strip()][:3]
-        if not exps:  # never leave a section without something to score
-            exps = [f"Gives specific, first-hand evidence for {c['name'].lower()}"]
+        exps = [str(e) for e in (s.get("expectations") or []) if str(e).strip()][:prompts.MAX_TAILORED]
         plan["sections"].append({"key": c["key"], "expectations": exps,
                                  "sample_questions": [str(q) for q in (s.get("sample_questions") or [])][:3]})
-    return plan
+    return prompts.full_plan(plan)
 
 
 def _normalise_reply(reply: Any) -> tuple[str, str, Optional[str]]:
@@ -495,13 +493,13 @@ async def ask_llm_next(dbs, sess: db.InterviewSession, end_now: bool = False) ->
     system = prompts.interviewer_system(sess.role, sess.level, sess.interview_type, minutes,
                                         ctx_of(sess), session_plan(sess))
     messages = build_history(qs, answers, note)
-    reply = await llm.chat(system, messages, json_mode=True, max_tokens=3000)
+    reply = await llm.chat(system, messages, json_mode=True, max_tokens=500)
     kind, text, section = _normalise_reply(reply)
 
     # Enforce the rules in code, not just in the prompt.
     if kind == "end" and main_asked < max_main and elapsed < minutes * 60 * 0.75:
         messages[-1]["content"] += "\nThere is still plenty of time: ask the next main question now, preferring an uncovered section."
-        reply = await llm.chat(system, messages, json_mode=True, max_tokens=3000)
+        reply = await llm.chat(system, messages, json_mode=True, max_tokens=500)
         kind, text, section = _normalise_reply(reply)
     llm_said_end = kind == "end"
     if not qs:
@@ -654,7 +652,7 @@ async def make_feedback(session_id: int, regenerate: bool = False) -> SessionDet
     with db.get_db() as dbs:
         sess = load_session(dbs, session_id)
         existing = db.report_for(dbs, session_id)
-        if existing and not regenerate and json.loads(existing.report_json).get("version") == 2:
+        if existing and not regenerate and json.loads(existing.report_json).get("version", 1) >= 4:
             return session_detail(dbs, sess)
 
         qs = db.questions_for(dbs, session_id)
@@ -663,10 +661,9 @@ async def make_feedback(session_id: int, regenerate: bool = False) -> SessionDet
         for q in qs:
             a = answers.get(q.id)
             item = {"id": q.id, "number": q.position + 1, "kind": q.kind, "section": q.section, "text": q.text,
-                    "skipped": bool(a and a.skipped), "verbatim": None, "stats": None, "content_words": 0}
+                    "skipped": bool(a and a.skipped), "verbatim": None, "stats": None}
             if a and not a.skipped:
                 item["verbatim"] = disfluency.to_plain_verbatim(a.tokens)
-                item["content_words"] = sum(1 for t in a.tokens if t["kind"] in fluency.SPOKEN_KINDS)
                 item["stats"] = a.stats
                 if a.stats:
                     per_answer.append({"question_id": q.id, "index": q.position + 1, "stats": a.stats})
@@ -678,7 +675,9 @@ async def make_feedback(session_id: int, regenerate: bool = False) -> SessionDet
             sess.plan_json = json.dumps(await make_plan(sess))
             dbs.add(sess)
             dbs.commit()
-        plan = session_plan(sess)
+        # Fixed rubric: every candidate is scored against the same standard expectations.
+        plan = prompts.standard_plan()
+        report_model = settings.resolved_report_model
 
         s_stats = fluency.session_stats(per_answer)
         setup = {"role": sess.role, "level": sess.level, "interview_type": sess.interview_type,
@@ -686,14 +685,15 @@ async def make_feedback(session_id: int, regenerate: bool = False) -> SessionDet
         raw = await llm.chat(prompts.REPORT_SYSTEM,
                              [{"role": "user", "content": prompts.report_user_message(setup, plan, q_payload, s_stats, ctx_of(sess))}],
                              # Long (60–90 min) interviews need a much bigger report budget and more time.
-                             json_mode=True, max_tokens=min(60000, 16000 + 1200 * len(q_payload)),
-                             timeout=120 + 6 * len(q_payload), model=settings.llm_report_model or None,
-                             temperature=0)
+                             json_mode=True, max_tokens=min(60000, 24000 + 1500 * len(q_payload)),
+                             # Gemini 3 models are tuned for their default temperature; others run at 0 for stability.
+                             temperature=None if report_model.startswith("gemini-3") else 0,
+                             model=report_model, timeout=240 + 10 * len(q_payload))
         try:
             report = scoring.build_report(raw, plan, q_payload, s_stats)
         except ValueError as e:
             raise llm.LLMError("The AI returned an invalid report. Please try again.") from e
-        report["generated_with"] = {"llm": settings.llm_provider, "model": settings.llm_report_model or settings.resolved_llm_model,
+        report["generated_with"] = {"llm": settings.llm_provider, "model": report_model,
                                     "stt": stt_service.status()["name"]}
 
         await build_recording(sess, qs, answers)
