@@ -1,0 +1,119 @@
+Interviewer
+00:00
+Hey! Great to meet you, Shashank! I've had a chance to look through your background before we got on the call—looks like you've been doing some really interesting work in AI and agentic systems. I'm an AI Technical Recruiter, and I'll be running your mock screening today for an AI Engineer role focused on building and deploying production-grade Generative AI and agentic systems. Here's what we'll cover today: we'll start with some logistics around your background and experience, then dive into your hands-on work with GenAI systems, explore your technical skills with LLM tools and frameworks, and finish with how you've collaborated with cross-functional teams. The whole thing should take about 30 minutes, and we'll leave time at the end for any questions you have. Before we jump in, why don't you kick us off—tell me a bit about yourself and your background in tech?
+
+You
+01:57
+Okay, so myself, and I have been, uh, doing AI for about 3 years. I joined Uh, for 3 years as, uh, professionally, and before that I was doing AI in my college. So I first joined Intelligen AI as my first company, and I was there for 2 years. The company was a service-based, uh, AI company which, uh, which, which, which provides services, AI services, to different, different clients. Mainly it was into uh, giving custom solutions, and I, I have worked into fields like hospitality, industrial industrial. Uh, equipments and reliability. Fields. And after that, after that, I joined delivery. Delivery is India's biggest logistics company. And here I'm working on the on, uh, logistics pipelines and mainly to automate logistics pipeline using AI. Yeah.
+
+Interviewer
+01:58
+Thanks for walking me through that. So you've got a solid foundation spanning both service-based and product-side AI work. I noticed on your resume that you're currently at Delhivery—you mentioned you joined in January 2026, so you're actually just a few months in. Before we dig deeper into what you're building there, I'm curious: at Inteligen AI, you worked across different verticals like hospitality and industrial reliability. What drew you to move from that kind of service-based, custom-solution work over to a product company like Delhivery?
+
+You
+04:13
+Okay. So, uh, the thing was, in a service-based company, we have we have, uh, many we have different clients, but the solutions they expect were quite the same. Like, they want a rack, They wanted to have a chatbot, they wanted to make, uh, something with, with images like image annotations. So in the span of 2 years, I have seen that Most of the, the problem statement was replicated. They are only for repeated racks and mainly on POCs. I wanted to explore explore things on scale. So Delivery is a product-based company and all, and they ship about a billion shipments per year. So if we see, so there would be about 3 million shipments per day. which is a good scale. So If I, if I am automating such solution with AI, or if I, uh, If I am making anything that is assisting that pipeline, that the logistics solutions that would cover a decent scale, about 5 million or 10 or about 5 million. calls per, uh, day. Right now we are about 100K or 200K. Uh, request per day. But we, uh, we are about to scale about a million calls per day. So the thing is The, uh, I just, I didn't move from a service-based company to a product-based company. Actually, I moved from a smaller company from making POCs to actually deployment things into production to delivery.
+
+Interviewer
+04:16
+Got it. Thanks for clarifying that—the scale motivation makes a lot of sense. You're looking at a fundamentally different problem space now with millions of requests per day versus one-off POCs. Let me dig into one thing you mentioned: you said you're currently handling around 100K to 200K requests per day and scaling toward a million. When you're thinking about automating logistics pipelines at that scale using AI, what's the biggest technical challenge you're anticipating or already facing as you ramp up?
+
+You
+07:24
+Okay, so one of the biggest challenges that— let me tell you, so There are certain, uh, there are— so one of the, the, the problem statement in which I had to automate the appointment booking pipeline. Okay, so there used to be emails on which the, the client provides detail for the appointment. It could be a PDF or a text mail or a or a Word file or an Excel file in which there are a very unstructured data and we have to read through all all the the, the technicalities, and we have to make them into a, a simple flow. So using an agent over it was causing a lot of iterations for Uh, for for sending, for clustering similar kind of requests. So for, uh, for each appointment we have to, uh, book like. Of the, the appointment ID, the appointment date, and and the slot. Okay, so if there are 500 or 600 appointments, so We, we were facing, uh, the timeout in the LLM and it, the request was sometimes the, the request was taking too long that the API Gateway was throwing error. OK, so we make— we made DAGs, which is direct acyclic graphs, to solve such problems in which we made different nodes. Each node have their own functions like to simplify or read the the text from Excel, Word, or the PDF, and the other LLM call which just scrape us, just give us the all list of the LRN numbers, their appointment numbers, the appointment date, and the slots. Which we then, which we then can we, which we can then later process into, into another node, which is a kind of API node or a code node by sending all those Uh, all those requests parallelly into API. So Early it was taking about Uh, 20K to 30K. tokens per request. And about 10 minutes or 5 to 10, uh, 5 to 10 minutes per request. Now it takes around 1 minute. For one request and it takes around 5K to 10K tokens. So we have optimized the cost by half and the latency by, uh, 100 times.
+
+Interviewer
+07:25
+Understood. So you restructured the flow from a sequential agent approach into a DAG-based architecture with parallel processing, which gave you massive wins on both latency and token efficiency. That's a solid optimization. When you were designing those different nodes in the DAG—especially the one handling the extraction of appointment details from those unstructured documents—how did you decide what information to extract and in what order? And did you run into any issues where the LLM would miss or misinterpret certain fields?
+
+You
+10:38
+Okay, yeah, so The first question you asked was how did you decide what information to extract in what order? Okay, so we have an LLM node, so we made the DAG very similar to an, uh, like an and architecture. We took inspiration from Diffie and we made, uh, the DAG like that. So we have several nodes like tool node, uh, LLM node, Okay, so what we do, Uh, What we do, So what we do, for each LLM node, we have already decided a section for system prompt and for the structured response prompt. So if you, if you want anything in a structured format, you can just give the format in the raw JSON. In backend, we, uh, we make that a parent dictionary from that raw JSON and we pass it into the LLM, uh, LLM prompt. Okay. So in the system prompt, we have all the details that what we wanted to extract and how the, how that information looks into real. And after that, after the extraction, section, we have the complete, uh, extracted detail, the structured detail. After that, we have the other node, which is a a tool node in an iteration node. So in an iteration node, we have a tool node which iterates over all the documents, all the list, and it, it just, uh, it just applies those up. appointment to all o— over them. So in, uh, in this way we, we have we have, uh, did this, uh, what you have said, LLM would miss here. LLM has many times, LLM have misinterpreted or it has, uh, missed certain fields. So over the time we we know that certain clients have different ontologies, or there can be certain different uh, things like certain different name for different things. So some of them call it as appointments, some of them may call it as LRN or there can be something like nothing, okay? So what we did, we made a memory layer out of it. So after, uh, 10 to 20 calls, we would have a memory layer. which extracts those data from, uh, like it's like a feedback mechanism. So after the 20 requests, a person reads it. If we want anything to be extracted, Where the LLM, we extract it, and then that information can be reused as a, as a context.
+
+Interviewer
+10:39
+Okay. So you built a feedback loop—after processing initial requests, humans review and extract patterns about client-specific terminology or field variations, and then that becomes part of the context for future requests. That's a smart way to handle the variability without constantly retraining. When you say "a person reads it" and validates those extractions—how are you deciding what gets flagged for human review in the first place? Are you checking confidence scores from the LLM, comparing outputs against some ground truth, or something else?
+
+You
+13:12
+Okay, so, okay, uh, that's right. So we have made a pipeline for it. So for every 50 conversations, we throw all the responses of the LLM. to, uh, to us, to a prompt which, uh, which classifies different kind of memories from it. So like, it's like semantic memory, procedural memories, and episodic memories. Okay. All this, all the structure for, all the structure for a format we receive on a dashboard that these are the memory elements the, the LLM has got from the last 50 or the 100 requests. Okay. And at the end of the day, uh, we, a person gets to check that if it's a new information, it gets in, into mostly into the, the semantic field. And we have a a flag-based operation for it. If we are Because in mostly semantic, we are making some new information in episodic, we are mainly into timestamps and like on this event or during this festival, these many requests have came like this kind. kind of things. But for I would tell you about this use case later. We have used this memory element in a voice, in a voice orchestrator in, in detail. So So in The, a person sits behind the back and it, the client mainly for the, for what use cases we have made that product. The product manager sits behind and it checks that what new semantics, what new semantics has been formed. And based on that, what can be be useful. It just picks And if there is some hallucination or some irrelevant cement has been formed, we delete it.
+
+Interviewer
+13:13
+Understood. So you've got a structured memory classification system—semantic, procedural, episodic—and a human-in-the-loop validation where a product manager reviews what's being extracted and decides what's useful versus noise or hallucinations. That's a thoughtful approach to keeping the memory layer clean. You mentioned you'd tell me about how this memory element was used in a voice orchestrator later. Before we get there, I want to ask: in that appointment booking pipeline, once you had all those extracted details and the optimized DAG running smoothly, how were you validating that the appointments actually got booked correctly? Did you have any monitoring or evaluation in place to catch errors downstream?
+
+You
+15:41
+Okay, so we have built, we have build an observability layer over that. So we were using Lanfuse for it, for catching the tool errors and the, and the LLM errors if or any rate limiting factors. After that, in, in order to check that whether the appointments are getting or not, what we have already made a dashboard. So we have already a dashboard. So if appointments comes, it's all It's, it's, it's, it's being done by the operations team mainly. So Before launching into production, we check for about 100 or 200 requests in which we throw— we fire the request and on the And if, if the flow runs well, if the flow runs correctly, then we check it on the appointment dashboard that yeah, this appointment has been raised for this date and, and for this slot. And, and similarly, the operations team does the same. So they have We, we are into an FDE role, basically. So we are making things for our client. So the client variates at the— this many. Emails have come today and this client have thrown about 100,000 or sorry, 1,000 appointment requests. So we need to just check that. What's the total request for this client? So they validate and they tell us if there is some missing or some
+
+Interviewer
+15:42
+Got it. So you're running pre-production validation against a sample of requests, checking both the system logs via Langfuse and the actual business outcome—whether appointments show up correctly on the dashboard. Then the operations team validates at scale once it's live. I want to shift gears a bit here. We've been talking about this appointment booking system at Inteligen, which is clearly one of your more complex projects. But I also want to make sure we cover the work you're doing right now at Delhivery. You mentioned you're working on a no-code agentic platform there. Can you walk me through what that platform does and what your specific contributions have been since you joined in January?
+
+You
+16:51
+Okay, so, uh, The day since I joined in January, we were making Okay. Okay, I'm ready to go.
+
+Interviewer
+16:52
+Sure
+
+You
+18:40
+So I have been assigned. To a— for making a platform which is which is an MCP platform. We call it an MCP platform because it has— it is basically a harness platform in which we can register different prompts for different use cases. We can register our MCP too. MCP tools, we can register our own agents which are, which are We can register our own agents which are, uh, which are solving different use cases. We can create different workflows for different use cases. We have the LandFuse integration over there. We have Uh, Okay, so I was the, the main guy for, for building these things. So I was mainly into the back— the backend, and I was assisting with the clients for onboarding their use cases. Yes, yes. So we have made this platform from January to June. August, and after August, um, I'm just onboarding use cases on it and I have solved about 20 to 30 use cases automating and solved. I have been able to create a— sorry, I have been able to integrate LLM Gateway, which is for handling of and scaling of the LLM calls. And for governance of the LLM calls, that which client is getting how many number of tokens or how many number of requests per day. So yeah, so I have made the observability part. I have hosted it over the Kubernetes. I have hosted the Bifrost, then I have built this whole, whole platform.
+
+Interviewer
+18:42
+Understood. So you built out the backend of this MCP-based platform—handling tool registration, agent management, workflows—integrated Langfuse for observability, set up an LLM gateway for governance and scaling, and deployed it all on Kubernetes. And since August, you've been onboarding use cases and have deployed around 20 to 30 GenAI applications on it. Quick clarification: when you say you "integrated an LLM Gateway"—are you talking about Bifrost, which I see mentioned on your resume, or is that a separate component? And what does that governance piece actually look like in practice? Like, how are you tracking and enforcing token limits or request quotas per client?
+
+You
+19:27
+No, no, it's It's, it's Bifrost.
+
+Interviewer
+19:30
+Got it. So Bifrost is your LLM gateway handling both the scaling and the governance layer. How are you actually enforcing those token limits or request quotas per client? Is that happening at the gateway level, or are you tracking it elsewhere and then applying controls?
+
+You
+20:53
+Okay, so at the platform, when you are making any any workflow or any agent, so you have to provide a Bifrost key there. That Bifrost key is responsible for your LLM usages. Okay. So there, uh, you need to contact the, the Dev team for generation of an, uh, of an API key. Sorry, a Bifrost API key. That Bifrost API key will be attached to a, to, to a or many LLM keys. And, and models. And you can, uh, you can set the, the, the governance, the governance on the Bifrost. Like you can set it like, uh, this, this much quota like $20 for this client on the monthly basis or on uh, weekly basis, you can set it on. On there. Okay. So this was this and And, uh, Yeah. So this is how I Yeah. Fuck that.
+
+Interviewer
+20:55
+Okay. So the Bifrost key acts as the governance point—clients get their own key, and you set cost or quota limits at that level. That makes sense for multi-tenant isolation and tracking. I want to make sure we're covering the right ground here. We've got about 8 minutes left, so let me ask you something more direct: you've built this platform and deployed 20-30 use cases on it. Of those, how many are actually in production handling real traffic, and what's the scale you're seeing? Like, are we talking hundreds of requests a day, thousands, or more?
+
+You
+22:23
+No, no, so about 10 use cases are into real production. On which, uh, about each use cases is taking about So the most, uh, this appointment workflow is one of the most highly, uh, highly traffic-oriented, uh, use case in which, which is handling about 20K requests per day. Apart from that, there is a fleet tracking use case and other voice orchestrator, which are about for 15 10 to 15K, and there are several other use cases like fleet tracking. Uh, like warehouse maintenance details, like OCR, uh, OCR tools. So all these combinedly are making about 100K requests per day.
+
+Interviewer
+22:29
+Thanks for that breakdown. So you've got real production volume—100K requests a day across 10 live use cases, with the appointment workflow being the heaviest at 20K. That's solid scale. I want to dial in on one more thing before we wrap up: you mentioned a voice orchestrator as one of those use cases. Earlier you said you'd tell me more about how the memory
+
+You
+22:53
+And when I say And when I say 100K per request, I mean 100K LLM calls, not whole API, not whole API response, the whole API, the whole request. per day can be about 200 or 300K, in which the LLM calls are are around 100 to 150K.
+
+Interviewer
+22:54
+Got it—so 100K to 150K LLM calls per day across those 10 use cases, which translates to 200-300K total API requests. That's a meaningful volume you're managing. You mentioned the voice orchestrator earlier and said you'd explain how that memory layer from the appointment booking system got applied there. Given our time, can you give me a quick rundown of what that voice orchestrator does and how the memory element fits in?
+
+You
+26:49
+Okay, so I'm just saying the memory element is not for any specific use case. It's a generic feature of that platform. So you can, uh, it's just like a plugin, so you can just apply it on any agent or the workflow you wanted. Okay, so what is the voice orchestrator? So we have Uh, so we had a case that, uh, in which we want our AI-based Uh, AI-based, what you say, Uh, negotiator. So If we, if we want to travel from point A to B, we need to rent trucks, we need to rent fleets, okay? So for, uh, renting those fleet, we need to call the, the, the agencies and ask what's the rate, and we have to negotiate that. No, Uh, we want At about 20% discount for because of this, uh, because of this festival or because we are asking a bulk request. Okay, so in those, in those kind of For these kind of use cases, we have built a voice, voice orchestrator. The voice orchestrator, what does it— it has layering of TTS, STT, and Uh, and LLM. So It the— and it is all, um, has been mounted up. Over a use case of Twilio, which is Twilio or Vobis for the calling feature. So via Vobis, we are able to make a call to the to the client. And after that, we receive that data. to our platform. In base64 form, which then we converted into a into transcript via STD. We are using Servum. वह सर्वम Saras. V3 for it. And after that, that transcription gets into an LLM call, and that LLM calls get into the response of that LLM gets into TDS, and it gets as a reply to the user. So now what we have made as a memory key, like suppose we are trying to mimic the user's behavior. Like we want to mimic something, we want to note something like this, this this. What do you say, this client or this Uh, service provider to take about 3 to 4 rounds of negotiation, and after that he can give us 10 to 20% of discount. Or we have been a very good relationship with him, so in the past year we have done about 50 or 100 use cases with him, and by telling these kind of things, he, he gives us a fair discount. Okay. There can be certain things like during this era From, uh, Jaipur to Delhi, the cost can go— the cost is less because the traffic is because the traffic is less and they have more— they have less their fleets are in less demand, so Capturing all those kind of information which can be helped for, for a better context and for a better, for providing a better background. We we have built, uh, that memory layer has been utilized.
+
+Interviewer
+26:50
+Understood. So the memory layer is a generic platform feature that captures context about clients, negotiation patterns, regional dynamics, and past relationships—and that context gets injected into the LLM calls during the voice orchestrator flows to help the AI negotiate more effectively. That's a clever use of accumulated context. We're down to about 3 minutes, so let me ask one final question before we wrap: across all the work you've been doing—both at Inteligen and now at Delhivery—you've touched a lot of different LLM APIs and tools. OpenAI, Gemini, Claude, open-source models on Bedrock, Langfuse, vector databases. When you're evaluating which LLM or tool to use for a new use case, what's your decision-making process? Are you mainly optimizing for cost, latency, accuracy, or how do you balance those trade-offs?
+
+You
+29:09
+So my main evaluation, the main, my main factor for evaluation is accuracy. Okay. All those things comes at secondary, like cost, latency. So the main thing is accuracy. Whatever we— the very first thing we, we can do with GenAI is we, we can 3. Address them, whatever the information they are giving is true or not. So we need to first work on the hallucination. If all those things works, we— the very Uh, the other thing we, we need to manage is the customer experience, which can be made by reducing the latency. So for reducing latency, we can optimize the, the tool, the tools, or making less iterations in the LLM call, or optimizing the system prompt, making easy reasoning, or are using small models or flash models for quick, quick, quick response. For cost, we can we can do like certain things like prompt optimization. That's the third comes like the cost with, with prompt optimization, with, uh, with replacing the agents or the multi-iterations with DAGs. So yeah. It is. This is
+
+Interviewer
+29:10
+Got it. So your hierarchy is accuracy first—validating against hallucinations and ground truth—then customer experience through latency optimization, and cost comes in third through prompt and architecture optimization. That's a sensible prioritization for production systems. Alright, we're nearly at the end of our time. Before we wrap up, do you have any questions for me about the role, the team, or anything else about this opportunity?
+
+You
+29:42
+No, thank you.

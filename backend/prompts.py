@@ -60,9 +60,10 @@ COMPETENCY_KEYS = [c["key"] for c in COMPETENCIES]
 # strong engineer who never states their fit, uses "we" throughout, or rambles is scored accordingly.
 STANDARD_EXPECTATIONS: dict[str, list[str]] = {
     "role_alignment": [
+        "Has relevant experience that fits the role's scope and level (judged from what they described, even if they never said so)",
         "Explicitly connects their past work to this role's requirements in their own words, so the recruiter doesn't have to infer the fit",
         "States a clear value proposition: what they personally would bring to this team or role, and why",
-        "Gives a specific, credible motivation for the move and why this role is the logical next step",
+        "Gives a specific, credible motivation for their career moves and what they want next and have shown motivation in their past work (guess from their response even if they never said directly)",
         "Shows awareness of, or research into, the hiring company, its product or domain",
     ],
     "technical_background": [
@@ -266,9 +267,10 @@ Step 2 — Competency score 0–100, using this anchored scale (the same bands t
   to demonstrate, not a reason to be lenient.
   HARD BOUNDARIES (apply all of them; the lowest applicable limit wins):
     - No expectation at level 2 or 3 in a competency -> its score is at most 30. No evidence at all -> at most 25.
-    - Best expectation only Partially Met (no level 3) -> at most 60.
-    - An answer with >= 8 disfluencies per 100 words (see "disfluencies_per_100_words") cannot be the evidence for a
-      level 3: the work may be good but it was buried; rate it 2.
+    - Best expectation only Partially Met (no level 3) -> at most 65.
+    - Technical Background and Impact & Ownership: an answer with >= 8 disfluencies per 100 words (see
+      "disfluencies_per_100_words") cannot be the evidence for a level 3 — the work may be good but it was buried;
+      rate it 2. This rule does NOT apply to Role Alignment: whether a background fits the role is judged on substance.
     - "I" share under 50% of first-person pronouns -> the "uses 'I'" expectation is at most level 1 and
       Impact & Ownership is at most 60.
     - Communication & Clarity: fillers >= 8/min or repetitions+false starts >= 6/min -> at most 39;

@@ -1,0 +1,55 @@
+Interviewer
+00:00
+Hi, thanks for joining. This is a screen for an AI Engineer role building production GenAI and agentic systems. Tell me about yourself and what brings you to this role.
+
+You
+01:20
+I'm an AI engineer with three years of production experience, and the short version is: I take LLM prototypes and turn them into reliable systems at scale. At Delhivery I own the backend of our internal agent platform, which now runs ten production use cases and about 120 thousand LLM calls a day. I'm applying because your team is building agent infrastructure for enterprise customers, and that's exactly the problem I've spent the last year solving internally. I read your engineering post on evaluating tool-calling agents, and the reliability work there is what I'd most like to contribute to.
+
+Interviewer
+01:25
+What drew you from a services company to Delhivery, and why move now?
+
+You
+02:30
+Two reasons. First, at my services company I built the same RAG proof of concept for different clients and almost none reached production, so I wasn't learning how systems behave under real load. I moved to Delhivery specifically for scale: three million shipments a day. Second, I'm moving now because I've solved the platform problem internally and I want to apply it to external customers, where reliability and evaluation matter even more. This role is the logical next step: same problem, harder customers.
+
+Interviewer
+02:35
+Tell me about a hard technical problem you solved there.
+
+You
+04:10
+The hardest was our appointment-booking pipeline. Customers email bookings as PDFs, Excel or free text, sometimes six hundred appointments in one email. My first version used a single agent loop, and it timed out at the API gateway after ten minutes and burned thirty thousand tokens per request. I redesigned it as a DAG: one node normalises the document, one LLM node extracts appointment ID, date and slot into a strict JSON schema, and a code node books them in parallel. I chose a DAG over a multi-agent setup because the steps are fixed and I needed predictable latency and cost. Latency dropped from about ten minutes to one, tokens fell from thirty thousand to under ten thousand, and that cut our monthly LLM bill for that pipeline by roughly sixty percent.
+
+Interviewer
+04:15
+How do you know the extractions are correct?
+
+You
+05:30
+I built an evaluation set of four hundred real emails with hand-labelled appointments, and every prompt or model change runs against it in CI. We track field-level precision and recall; we're at ninety-seven percent recall on dates, and anything below ninety-five blocks the release. In production I log every extraction to Langfuse and sample fifty a day for human review, and disagreements go back into the eval set. The main failure mode we found was clients using their own terms, like LRN instead of appointment number, so I added a per-client glossary that's injected into the prompt.
+
+Interviewer
+05:35
+What was your personal contribution versus the team's on the platform?
+
+You
+06:40
+I designed and built the platform backend myself: workflow execution, tool and agent registration, and the Langfuse integration. I also set up Bifrost as our LLM gateway and wrote the per-client budget enforcement, so each team gets an API key with a monthly cost cap. The frontend was built by a colleague, and our product manager owned onboarding. Since August I've personally onboarded twelve use cases, and the platform cut new-use-case delivery time from about six weeks to under two.
+
+Interviewer
+06:45
+What would you do differently, and what are the limitations today?
+
+You
+07:50
+The biggest limitation is that our memory layer still relies on a person approving new facts each day, which doesn't scale past about twenty clients. If I rebuilt it, I'd add automatic contradiction checks against existing memory and only escalate conflicts to a human. I'd also have introduced the eval set from day one; for the first two months we were shipping prompt changes on intuition, and we had one regression that mis-booked about forty appointments before ops caught it.
+
+Interviewer
+07:55
+Any questions for me?
+
+You
+08:30
+Yes, two. How does your team evaluate agent reliability for enterprise customers today, and what does success look like for this role in the first six months?
