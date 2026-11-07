@@ -49,8 +49,8 @@
   color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
+/* dark theme (opt-in via the moon toggle) */
+:root[data-theme="dark"] {
     --bg: #0e141e;
     --surface: #151c27;
     --surface-2: #1b2431;
@@ -87,7 +87,7 @@
     --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .25);
     color-scheme: dark;
   }
-}
+
 
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -341,7 +341,9 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 }
 .pause-pill.long { background: var(--pause-2); }
 .pause-pill.very_long { background: var(--pause-3); color: #fff; }
-@media (prefers-color-scheme: dark) { .pause-pill.very_long { color: #fff; } }
+/* dark theme (opt-in via the moon toggle) */
+:root[data-theme="dark"] .pause-pill.very_long { color: #fff; }
+
 .transcript.clean .tok.filler, .transcript.clean .tok.repetition, .transcript.clean .tok.false_start,
 .transcript.clean .pause-pill, .transcript.clean .tok.event { display: none; }
 .transcript.clean .tok.stammer { text-decoration: none; }
@@ -450,9 +452,9 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
    Screen report v2 — Overall /100, competencies, detailed breakdown
    ===================================================================== */
 :root { --b-weak: #d0574f; --b-moderate: #d99a2b; --b-good: #2b9468; --b-excellent: #3f6fe0; }
-@media (prefers-color-scheme: dark) {
-  :root { --b-weak: #f0827b; --b-moderate: #f0b552; --b-good: #5cc999; --b-excellent: #8aa0ff; }
-}
+/* dark theme (opt-in via the moon toggle) */
+:root[data-theme="dark"] { --b-weak: #f0827b; --b-moderate: #f0b552; --b-good: #5cc999; --b-excellent: #8aa0ff; }
+
 .timer.warn { color: var(--warn); font-weight: 600; }
 .section-dots { display: flex; gap: 6px; }
 .section-dots i { width: 22px; height: 6px; border-radius: 999px; background: var(--surface-3); display: block; }
@@ -671,13 +673,13 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
   --band-exc-bg: #dcf1e1; --band-exc-fg: #14532d;
   --shadow: none;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
+/* dark theme (opt-in via the moon toggle) */
+:root[data-theme="dark"] {
     --ok: #5cc477; --ok-soft: #17301f; --up: #f08a55; --up-soft: #3a2318;
     --band-mod-bg: #3a2318; --band-mod-fg: #f6b48c; --band-good-bg: #17301f; --band-good-fg: #8fdca1;
     --band-weak-bg: #3b1d1d; --band-weak-fg: #f3a0a0; --band-exc-bg: #12331f; --band-exc-fg: #7fe0a0;
   }
-}
+
 body { font-family: var(--font); font-size: 15px; letter-spacing: -.003em; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
@@ -757,7 +759,9 @@ body { font-family: var(--font); font-size: 15px; letter-spacing: -.003em; }
 .gauge-wrap { position: relative; width: 100%; max-width: 360px; margin: 6px auto 0; }
 .gauge2 { width: 100%; display: block; overflow: visible; }
 .g-label { font-size: 10.5px; fill: rgba(14, 20, 30, .62); font-family: var(--font); letter-spacing: .01em; }
-@media (prefers-color-scheme: dark) { .g-label { fill: rgba(14, 20, 30, .75); } }
+/* dark theme (opt-in via the moon toggle) */
+:root[data-theme="dark"] .g-label { fill: rgba(14, 20, 30, .75); }
+
 .gauge-center { position: absolute; left: 0; right: 0; bottom: 4px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .g-num { font-size: 2.4rem; font-weight: 700; letter-spacing: -.03em; }
 .g-den { color: var(--muted); font-size: 1.05rem; }

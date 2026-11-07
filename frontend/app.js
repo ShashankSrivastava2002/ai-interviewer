@@ -157,6 +157,28 @@ window.addEventListener("beforeunload", (e) => {
 });
 
 // ---------------------------------------------------------------------
+// Theme: light by default, optional dark via the moon button
+// ---------------------------------------------------------------------
+const THEME_ICON = {
+  moon: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M15.5 12.3A6.5 6.5 0 0 1 7.7 4.5a6.5 6.5 0 1 0 7.8 7.8z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
+  sun: '<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3.4" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
+};
+function applyTheme(theme) {
+  const dark = theme === "dark";
+  if (dark) document.documentElement.dataset.theme = "dark";
+  else delete document.documentElement.dataset.theme;
+  const b = $("#theme-btn");
+  b.innerHTML = dark ? THEME_ICON.sun : THEME_ICON.moon;
+  b.title = b.ariaLabel = dark ? "Switch to light mode" : "Switch to dark mode";
+}
+applyTheme(store.get("theme", "light"));
+$("#theme-btn").addEventListener("click", () => {
+  const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  store.set("theme", next);
+  applyTheme(next);
+});
+
+// ---------------------------------------------------------------------
 // Health chip
 // ---------------------------------------------------------------------
 async function loadHealth() {
