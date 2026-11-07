@@ -18,7 +18,9 @@ here, in Python, with strict rules so a weak interview can never look "Moderate"
    "No evidence" counts as 0: if you didn't demonstrate it, you get no credit for it.
 
 4. Competency score /100 = average points of its expectations.
-   Communication & Clarity = 70% rubric + 30% measured delivery (fluency.py; near-empty answers count 0).
+   Communication & Clarity = rubric × (0.5 + 0.5 × delivery/100), delivery measured in fluency.py.
+   Fluent delivery keeps the rubric score; heavy fillers/pauses can halve it. Delivery can never ADD points,
+   so fluent-but-empty or off-topic answers stay low.
    A competency the interview never reached scores 0 and is labelled "Not reached".
 
 5. Overall /100 = plain average of all four competencies.
@@ -34,11 +36,12 @@ from .prompts import COMPETENCIES, plan_for_prompt
 
 BANDS = [(75, "Excellent"), (50, "Good"), (30, "Moderate"), (0, "Weak")]
 LEVEL_LABELS = {3: "Met", 2: "Partially Met", 1: "Not Met", 0: "No evidence"}
+NOT_PROBED = "Not probed"
 LEVEL_POINTS = {3: 100, 2: 45, 1: 10, 0: 0}
 MIN_WORDS_FOR_LEVEL = {3: 40, 2: 20}
 RATING_CAPS = [(15, "Weak"), (35, "Moderate")]          # content words -> best possible rating
 RATING_ORDER = ["Weak", "Moderate", "Good", "Excellent"]
-COMMUNICATION_DELIVERY_WEIGHT = 0.3
+COMMUNICATION_DELIVERY_WEIGHT = 0.5   # max share of the rubric that poor delivery can remove
 EVIDENCE_MATCH = 0.85
 
 
@@ -155,12 +158,17 @@ def build_report(raw: Any, plan: dict[str, Any], questions: list[dict[str, Any]]
             while level >= 2 and best_words < MIN_WORDS_FOR_LEVEL[level]:
                 level -= 1
                 note = f"lowered: the cited answer has only {best_words} content words"
-            expectations.append({"id": pe["id"], "text": pe["text"], "level": level,
-                                 "label": LEVEL_LABELS[level], "points": LEVEL_POINTS[level],
+            # Never asked about -> left out of the score (it's the interview's gap, not the candidate's).
+            # Missing flag defaults to probed (strict).
+            counted = not (level == 0 and re_.get("probed") is False)
+            expectations.append({"id": pe["id"], "text": pe["text"], "level": level, "counted": counted,
+                                 "label": LEVEL_LABELS[level] if counted else NOT_PROBED,
+                                 "points": LEVEL_POINTS[level] if counted else None,
                                  "evidence": evidence[:3], "unverified_quotes_dropped": dropped, "note": note})
 
         reached = key in asked_sections or any(e["level"] > 0 for e in expectations)
-        rubric = round(sum(e["points"] for e in expectations) / len(expectations)) if expectations else 0
+        counted = [e["points"] for e in expectations if e["counted"]]
+        rubric = round(sum(counted) / len(counted)) if counted else 0
         if not reached:
             rubric = 0
         score = rubric
@@ -168,7 +176,7 @@ def build_report(raw: Any, plan: dict[str, Any], questions: list[dict[str, Any]]
         if key == "communication":
             fs = session_stats.get("fluency_score")
             delivery = round(fs * 10) if fs is not None else 0
-            score = round((1 - COMMUNICATION_DELIVERY_WEIGHT) * rubric + COMMUNICATION_DELIVERY_WEIGHT * delivery)
+            score = round(rubric * (1 - COMMUNICATION_DELIVERY_WEIGHT + COMMUNICATION_DELIVERY_WEIGHT * delivery / 100))
             reached = reached or bool(answered_numbers)
 
         qcards = []

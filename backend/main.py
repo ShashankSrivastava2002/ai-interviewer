@@ -394,7 +394,8 @@ async def analyse_audio(src: Path, wav: Path) -> dict[str, Any]:
 
 async def make_plan(sess: db.InterviewSession) -> dict[str, Any]:
     system = prompts.planner_system(sess.role, sess.level, sess.interview_type, sess.duration_minutes, ctx_of(sess))
-    raw = await llm.chat(system, [{"role": "user", "content": "Create the interview plan."}], json_mode=True, max_tokens=2500)
+    raw = await llm.chat(system, [{"role": "user", "content": "Create the interview plan."}], json_mode=True,
+                         max_tokens=8000, temperature=0.2)
     by_key = {s.get("key"): s for s in (raw.get("sections") or [])} if isinstance(raw, dict) else {}
     plan = {"sections": []}
     for c in prompts.COMPETENCIES:
@@ -494,13 +495,13 @@ async def ask_llm_next(dbs, sess: db.InterviewSession, end_now: bool = False) ->
     system = prompts.interviewer_system(sess.role, sess.level, sess.interview_type, minutes,
                                         ctx_of(sess), session_plan(sess))
     messages = build_history(qs, answers, note)
-    reply = await llm.chat(system, messages, json_mode=True, max_tokens=500)
+    reply = await llm.chat(system, messages, json_mode=True, max_tokens=3000)
     kind, text, section = _normalise_reply(reply)
 
     # Enforce the rules in code, not just in the prompt.
     if kind == "end" and main_asked < max_main and elapsed < minutes * 60 * 0.75:
         messages[-1]["content"] += "\nThere is still plenty of time: ask the next main question now, preferring an uncovered section."
-        reply = await llm.chat(system, messages, json_mode=True, max_tokens=500)
+        reply = await llm.chat(system, messages, json_mode=True, max_tokens=3000)
         kind, text, section = _normalise_reply(reply)
     llm_said_end = kind == "end"
     if not qs:
@@ -686,7 +687,8 @@ async def make_feedback(session_id: int, regenerate: bool = False) -> SessionDet
                              [{"role": "user", "content": prompts.report_user_message(setup, plan, q_payload, s_stats, ctx_of(sess))}],
                              # Long (60–90 min) interviews need a much bigger report budget and more time.
                              json_mode=True, max_tokens=min(60000, 16000 + 1200 * len(q_payload)),
-                             timeout=120 + 6 * len(q_payload), model=settings.llm_report_model or None)
+                             timeout=120 + 6 * len(q_payload), model=settings.llm_report_model or None,
+                             temperature=0)
         try:
             report = scoring.build_report(raw, plan, q_payload, s_stats)
         except ValueError as e:

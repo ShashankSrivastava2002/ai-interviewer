@@ -1286,8 +1286,9 @@ function evidenceHTML(c) {
     <summary>How this score was calculated</summary>
     <p class="muted small">Each expectation earns <b>Met 100 · Partially met 45 · Not met 10 · No evidence 0</b>.
       Every level must quote your exact words, and short answers can't earn Met (needs 40+ words) or Partially met (20+).
+      Expectations the interview never asked about are marked "Not probed" and left out.
       Score = average of the expectations${c.key === "communication"
-        ? `, blended 70/30 with your measured delivery (rubric ${c.rubric_score ?? 0} · delivery ${c.delivery_score ?? 0})` : ""}.</p>
+        ? `, then scaled by your measured delivery: rubric ${c.rubric_score ?? 0} × (0.5 + 0.5 × delivery ${c.delivery_score ?? 0}/100). Fluent speech keeps the full score; heavy fillers and pauses can halve it` : ""}.</p>
     <ul class="exp-list">${c.expectations.map((e) => `
       <li>
         <div class="exp-row"><span>${esc(e.text)}</span>${lv(e)}</div>

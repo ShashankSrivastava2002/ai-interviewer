@@ -189,14 +189,19 @@ HOW TO SCORE (strict, evidence-based):
     3 = Met            concrete evidence: clarity, ownership, structured reasoning, specific examples
     2 = Partially Met  some relevant evidence, but lacking depth or specificity
     1 = Not Met        incorrect reasoning, or only vague, theoretical answers
-    0 = No evidence    no relevant moment exists in the transcript (do NOT guess). Note: no evidence earns ZERO
-                       points — it is not neutral.
+    0 = No evidence    no relevant moment exists in the transcript (do NOT guess).
+- For every expectation also set "probed": true if the interviewer asked about it (directly or via a question whose
+  good answer would have shown it), false if the interview never touched it. Probed-but-no-evidence earns ZERO points
+  (the candidate had the chance and didn't show it); not-probed expectations are left out of the score.
 - Every score of 1–3 MUST cite at least one evidence quote: an exact, word-for-word substring of that question's
   answer (3–30 words, copied verbatim including fillers). Never paraphrase inside a quote. If you cannot quote it,
   the score is 0.
 - CALIBRATION — be a strict, realistic recruiter. Inflated scores are a failure of your job:
     * Level 3 is rare: a complete, specific, first-person answer with concrete details/numbers that fully meets the
-      expectation. Level 2 needs a real attempt with SOME specifics. Merely mentioning a topic is level 1.
+      expectation.
+    * Level 2 = relevant and technically correct, but thin: generic, few specifics or numbers, "we" without the
+      candidate's own part, or only part of the expectation covered. A typical average answer is level 2.
+    * Level 1 = vague to the point of saying nothing, incorrect, or only name-drops the topic in a sentence.
     * One-line, evasive, off-topic, confused, joking or non-answers ("Systems… system.", "um", silence) are level 1
       at best for anything they touch, and give NO evidence for anything else.
     * Asking the interviewer what to say, refusing, or not understanding the question is level 1.
@@ -228,7 +233,7 @@ Reply with JSON only, exactly this shape:
     {
       "key": "role_alignment" | "technical_background" | "impact_ownership" | "communication",
       "assessment": "3–5 sentences: what you observed for this competency",
-      "expectations": [{"id": "role_alignment.1", "level": 0-3, "evidence": [{"question": 2, "quote": "exact words"}]}],
+      "expectations": [{"id": "role_alignment.1", "level": 0-3, "probed": true, "evidence": [{"question": 2, "quote": "exact words"}]}],
       "improvements": [{"title": "short imperative", "detail": "2–4 sentences", "seen_in": [7]}],
       "strengths": [{"title": "short", "detail": "2–4 sentences", "seen_in": [2]}],
       "questions": [{"question": 7, "rating": "Moderate", "verdict": "...", "strong_answer": "..."}]

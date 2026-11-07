@@ -88,7 +88,7 @@ def answer_stats(tokens: list[dict[str, Any]], thinking_time: float | None, audi
 def fluency_score(s: dict[str, Any]) -> float:
     """
     0–10 score from transparent penalties (shown in the README):
-      fillers           -0.35 per filler/min above 2/min        (max -3)
+      fillers           -0.25 per filler/min above 2/min        (max -5)
       stammers/reps/FS  -0.5 per event/min                      (max -2.5)
       silence           -0.06 per % silent above 15%            (max -2)
       long pauses       -0.3 per pause >= 1.5 s                 (max -1.5)
@@ -96,7 +96,7 @@ def fluency_score(s: dict[str, Any]) -> float:
     """
     minutes = max(s["spoken_seconds"] / 60.0, 1 / 60)
     score = 10.0
-    score -= min(3.0, max(0.0, s["fillers"]["per_minute"] - 2.0) * 0.35)
+    score -= min(5.0, max(0.0, s["fillers"]["per_minute"] - 2.0) * 0.25)
     events = (s["stammers"] + s["repetitions"] + s["false_starts"]) / minutes
     score -= min(2.5, events * 0.5)
     score -= min(2.0, max(0.0, s["pauses"]["silent_pct"] - 15.0) * 0.06)

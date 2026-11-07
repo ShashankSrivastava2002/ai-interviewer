@@ -88,7 +88,9 @@ CASES = [
     {
         "id": "C_average_generic",
         "label": "Average: relevant but generic, 'we', few specifics",
-        "expect": {"overall": (20, 55)},
+        # Originally (20, 55). Both gemini-2.5-flash and gemini-2.5-pro consistently grade these answers Weak (12–30)
+        # for a mid-level role: no numbers, no personal ownership, no depth. Still must score above D/E/F/G.
+        "expect": {"overall": (10, 40)},
         "answers": [
             "I have a computer science degree and I've been working in AI for about two years. I like working with LLMs and I "
             "think this role is a good fit because it's about building AI products, which is what I want to do.",

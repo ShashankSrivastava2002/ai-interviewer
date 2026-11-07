@@ -39,7 +39,7 @@ Message = dict[str, str]  # {"role": "user" | "assistant", "content": str}
 
 async def chat(system: str, messages: list[Message], json_mode: bool = True,
                max_tokens: int = 2048, settings: Settings | None = None, timeout: float | None = None,
-               model: str | None = None) -> Any:
+               model: str | None = None, temperature: float | None = None) -> Any:
     s = settings or get_settings()
     if timeout:
         s = s.model_copy(update={"llm_timeout_seconds": max(timeout, s.llm_timeout_seconds)})
@@ -48,7 +48,7 @@ async def chat(system: str, messages: list[Message], json_mode: bool = True,
     if not s.resolved_llm_key and not (s.llm_provider == "openai" and s.llm_base_url):
         raise LLMError(f"No API key for LLM provider '{s.llm_provider}'. Add it to backend/.env.")
 
-    text = await _call(s, system, messages, json_mode, max_tokens)
+    text = await _call(s, system, messages, json_mode, max_tokens, temperature)
     if not json_mode:
         return text
     try:
@@ -59,7 +59,7 @@ async def chat(system: str, messages: list[Message], json_mode: bool = True,
             {"role": "assistant", "content": text},
             {"role": "user", "content": "That was not valid JSON. Reply again with ONLY the JSON object, no prose, no code fences."},
         ]
-        text = await _call(s, system, retry_msgs, json_mode, max_tokens)
+        text = await _call(s, system, retry_msgs, json_mode, max_tokens, temperature)
         try:
             return parse_json(text)
         except ValueError as e:
@@ -87,7 +87,8 @@ def parse_json(text: str) -> Any:
 # Provider calls
 # ---------------------------------------------------------------------------
 
-async def _call(s: Settings, system: str, messages: list[Message], json_mode: bool, max_tokens: int) -> str:
+async def _call(s: Settings, system: str, messages: list[Message], json_mode: bool, max_tokens: int,
+                temperature: float | None = None) -> str:
     provider = s.llm_provider
     model = s.resolved_llm_model
     t0 = time.perf_counter()
@@ -106,7 +107,9 @@ async def _call(s: Settings, system: str, messages: list[Message], json_mode: bo
                 for m in messages
             ],
             "generationConfig": {"maxOutputTokens": max_tokens,
-                                 **({"responseMimeType": "application/json"} if json_mode else {})},
+                                 **({"responseMimeType": "application/json"} if json_mode else {}),
+                                 # Only sent to Gemini (some OpenAI/Anthropic models reject it).
+                                 **({"temperature": temperature} if temperature is not None else {})},
         }
     else:  # OpenAI-compatible
         base = (s.llm_base_url or "https://api.openai.com/v1").rstrip("/")

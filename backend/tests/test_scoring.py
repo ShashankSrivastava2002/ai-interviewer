@@ -63,7 +63,7 @@ def test_the_bad_interview_scores_weak():
     assert c["role_alignment"]["score"] == 10                       # two Not met
     assert c["technical_background"]["score"] == 5                  # Not met + No evidence
     assert c["impact_ownership"]["score"] == 0 and c["impact_ownership"]["band"] == "Not reached"
-    assert c["communication"]["score"] == round(0.7 * 10 + 0.3 * 30)
+    assert c["communication"]["score"] == round(10 * (0.5 + 0.5 * 0.30))
     assert r["overall_score"] < 15 and r["overall_band"] == "Weak"
     # a 7-word answer can't be rated better than Weak
     assert c["technical_background"]["questions"][0]["rating"] == "Weak"
@@ -99,3 +99,17 @@ def test_seen_in_filtered_and_forgotten_questions_get_cards():
     assert c["role_alignment"]["questions"][0]["rating"] == "Good"
     assert [x["question"] for x in c["technical_background"]["questions"]] == [2]
     assert c["technical_background"]["questions"][0]["rating"] == "Weak"
+
+
+def test_not_probed_expectations_are_excluded_but_probed_silence_is_zero():
+    qs = [q(1, LONG, "technical_background")]
+    quote = "deployed the whole stack on Kubernetes"
+    exps = lambda probed: [{"id": "technical_background.1", "level": 3, "evidence": [{"question": 1, "quote": quote}]},
+                           {"id": "technical_background.2", "level": 0, "probed": probed, "evidence": []}]
+    not_probed = scoring.build_report({"competencies": [{"key": "technical_background", "expectations": exps(False)}]},
+                                      PLAN, qs, {"fluency_score": 5.0})
+    probed = scoring.build_report({"competencies": [{"key": "technical_background", "expectations": exps(True)}]},
+                                  PLAN, qs, {"fluency_score": 5.0})
+    assert not_probed["competencies"][1]["score"] == 100
+    assert not_probed["competencies"][1]["expectations"][1]["label"] == "Not probed"
+    assert probed["competencies"][1]["score"] == 50

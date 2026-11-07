@@ -136,7 +136,9 @@ The flow follows the published design of recruiter-style AI screens (e.g. Hacker
      Partially met needs 20+. Otherwise the level is lowered. Question ratings are capped too: under 15 words is Weak,
      under 35 is Moderate at most.
    - **Competency score:** the average of its expectations. A section the interview never reached scores 0 ("Not reached").
-   - **Communication & Clarity:** 70% rubric + 30% measured delivery. Near-empty answers count as 0 delivery.
+   - **Communication & Clarity:** rubric × (0.5 + 0.5 × delivery/100). Fluent speech keeps the full score; heavy fillers
+     and pauses can halve it. Delivery never *adds* points. Near-empty answers count as 0 delivery.
+   - Expectations the interview never asked about are "Not probed" and excluded; asked-but-unanswered ones score 0.
    - **Overall:** the plain average of all four competencies. Bands: Weak < 30 ≤ Moderate < 50 ≤ Good < 75 ≤ Excellent.
    - Optional `LLM_REPORT_MODEL` in `.env` uses a stronger model just for grading (e.g. `gemini-2.5-pro`).
 5. **Report:**
