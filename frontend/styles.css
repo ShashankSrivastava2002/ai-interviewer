@@ -852,6 +852,14 @@ body { font-family: var(--font); font-size: 15px; letter-spacing: -.003em; }
 .exp-list blockquote.unverified { opacity: .6; text-decoration: line-through; text-decoration-thickness: 1px; }
 .band.b-not { background: var(--surface-2); color: var(--muted); }
 
+.report-titlebar { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.history-item { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+.reassess-btn { white-space: nowrap; }
+
+.qa-score { display: inline-flex; align-items: baseline; gap: 2px; }
+.qa-score b { font-size: 1.1rem; font-weight: 700; }
+.qa-score small { color: var(--muted); margin-right: 8px; }
+
 /* ---------- responsive ---------- */
 @media (max-width: 720px) {
   .type-cards { grid-template-columns: 1fr; }

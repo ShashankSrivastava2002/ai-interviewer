@@ -861,10 +861,19 @@ function finishInterview() {
   generateFeedback(state.sessionId);
 }
 
-function confirmDialog() {
+function confirmDialog({
+  title = "End the interview?",
+  body = "You'll still get feedback on the questions you've answered.",
+  ok = "End & get feedback",
+  cancel = "Keep going",
+} = {}) {
   const dlg = $("#confirm-dialog");
+  $("#confirm-title").textContent = title;
+  $("#confirm-body").textContent = body;
+  $("#confirm-ok").textContent = ok;
+  $("#confirm-cancel").textContent = cancel;
   return new Promise((resolve) => {
-    if (typeof dlg.showModal !== "function") { resolve(window.confirm("End the interview and get feedback?")); return; }
+    if (typeof dlg.showModal !== "function") { resolve(window.confirm(`${title}\n\n${body}`)); return; }
     dlg.returnValue = "";
     dlg.showModal();
     dlg.addEventListener("close", () => resolve(dlg.returnValue === "ok"), { once: true });
@@ -1042,8 +1051,25 @@ function stopLive() {
 // ---------------------------------------------------------------------
 // Feedback generation
 // ---------------------------------------------------------------------
+/** Re-run the whole assessment with the current code and replace the old report. */
+async function reassess(id) {
+  const ok = await confirmDialog({
+    title: "Re-assess this interview?",
+    body: "Your saved answers are re-analysed with the current code (pauses, fillers, scoring) and the AI review runs again. The current assessment will be replaced and can't be restored.",
+    ok: "Re-assess & replace",
+    cancel: "Cancel",
+  });
+  if (!ok) return;
+  delete state.detailCache[id];
+  generateFeedback(id, true);
+}
+
 async function generateFeedback(id, regenerate = false) {
   show("loading");
+  $("#loading-title").textContent = regenerate ? "Re-assessing your interview…" : "Writing your feedback…";
+  $("#loading-text").textContent = regenerate
+    ? "Re-analysing your saved answers with the current code, then re-scoring. The old assessment will be replaced. About 1–2 minutes."
+    : "Counting fillers and pauses, then reviewing your answers. This can take 1–2 minutes.";
   $("#loading-error").hidden = true;
   $("#loading-actions").hidden = true;
   try {
@@ -1347,7 +1373,7 @@ function questionCardHTML(d, qc) {
       <span class="qnum">Q${q.number}</span>
       <p class="qa-q">${q.kind === "followup" ? '<span class="tag">Follow-up</span> ' : ""}${esc(q.text)}</p>
     </div>
-    <div class="qa-row"><span class="qa-label">Your Answer:</span><span class="band ${bandCls(qc.rating)}">${esc(qc.rating)}</span></div>
+    <div class="qa-row"><span class="qa-label">Your Answer:</span><span class="qa-score">${qc.score != null ? `<b>${qc.score}</b><small>/100</small>` : ""}<span class="band ${bandCls(qc.rating)}">${esc(qc.rating)}</span></span></div>
     ${a?.has_audio ? `<audio class="qa-audio" controls preload="none" src="/api/audio/${d.id}/${q.id}"></audio>` : ""}
     <div class="toolbar">${legendHTML()}<label class="switch"><input type="checkbox" class="clean-toggle" /> <span>Show clean version</span></label></div>
     <div class="transcript">${a?.tokens?.length ? renderTokens(a.tokens) : '<span class="muted">No speech detected.</span>'}</div>
@@ -1367,11 +1393,14 @@ function renderReport(d) {
   $("#report-root").innerHTML = `
     <a class="back-link no-print" href="#/history">${ICON.back} Back</a>
     ${(r.version || 2) < 4 ? `<div class="notice no-print">This report was scored with an older method.
-      <button type="button" class="btn btn-primary btn-sm" id="regen-top">Regenerate with strict scoring</button></div>` : ""}
+      <button type="button" class="btn btn-primary btn-sm" id="regen-top">↻ Re-assess now</button></div>` : ""}
 
     <article class="card report-main">
-      <h1 class="report-title">${esc(REPORT_TITLE[d.interview_type] || "Interview Feedback")}</h1>
-      <p class="report-meta">${esc(date)}<i>•</i>${mins} min session<i>•</i>${esc(d.role)}</p>
+      <div class="report-titlebar">
+        <h1 class="report-title">${esc(REPORT_TITLE[d.interview_type] || "Interview Feedback")}</h1>
+        <button type="button" class="btn btn-secondary btn-sm no-print" id="reassess-top" title="Re-run the assessment with the current code and replace this report">↻ Re-assess</button>
+      </div>
+      <p class="report-meta">${esc(date)}<i>•</i>${mins} min session<i>•</i>${esc(d.role)}${r.assessed_at ? `<i>•</i>assessed ${esc(fmtDate(r.assessed_at))}` : ""}</p>
 
       <div class="score-grid">
         <div class="score-box overall-box">
@@ -1439,7 +1468,6 @@ function renderReport(d) {
     <div class="actions">
       <button class="btn btn-primary" id="act-retry">Retry same questions</button>
       <a class="btn btn-secondary" href="#/setup">New interview</a>
-      <button class="btn btn-ghost" id="act-regen" title="Re-run the reviewer on the same transcript">Regenerate report</button>
       <button class="btn btn-ghost" id="act-pdf">Download PDF</button>
       <button class="btn btn-ghost" id="act-csv">Download CSV</button>
       <button class="btn btn-ghost" id="act-txt">Download verbatim .txt</button>
@@ -1566,8 +1594,8 @@ function wireReport(d) {
   wireTranscripts(".qa");
   $("#act-retry").onclick = () => { beginCreate({ retry_of: d.id }); location.hash = "#/mic"; };
   $("#act-pdf").onclick = () => window.print();
-  $("#act-regen").onclick = () => generateFeedback(d.id, true);
-  $("#regen-top")?.addEventListener("click", () => generateFeedback(d.id, true));
+  $("#reassess-top").onclick = () => reassess(d.id);
+  $("#regen-top")?.addEventListener("click", () => reassess(d.id));
   $("#act-csv").onclick = () => download(`interview-${d.id}.csv`, reportCsv(d), "text/csv");
   $("#act-txt").onclick = () => download(`interview-${d.id}-verbatim.txt`, verbatimTxt(d), "text/plain");
   $("#act-json").onclick = () => download(`interview-${d.id}.json`, JSON.stringify(d, null, 2), "application/json");
@@ -1690,9 +1718,14 @@ async function loadHistory() {
           ${o != null ? `<span class="score-badge" title="Overall">${o}/100</span>` : `<span class="score-badge none">${s.status === "active" ? "Unfinished" : "No report"}</span>`}
           ${s.fluency_score != null ? `<span class="score-badge flu" title="Delivery">Delivery ${Math.round(s.fluency_score * 10)}</span>` : "<span></span>"}
         </a>
+        <button type="button" class="btn btn-ghost btn-sm reassess-btn" data-reassess="${s.id}" title="Re-run the assessment with the current code and replace the old one">↻ Re-assess</button>
       </li>`;
     }).join("");
 
+    list.onclick = (e) => {
+      const b = e.target.closest("[data-reassess]");
+      if (b) reassess(Number(b.dataset.reassess));
+    };
     const scored = sessions.filter((s) => s.overall_score != null).reverse(); // oldest → newest
     $("#history-chart-card").hidden = scored.length < 1;
     if (scored.length) {

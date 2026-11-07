@@ -17,7 +17,7 @@ PROJECT_DIR = BACKEND_DIR.parent
 
 # Report (scoring) model per provider when REPORT_LLM_MODEL is empty: the largest available.
 DEFAULT_REPORT_MODELS = {
-    "gemini": "gemini-3.1-pro-preview",
+    "gemini": "gemini-3.8-flash",   # with thinking "low": best calibration and ~2x faster than 3.1-pro
     "anthropic": "claude-opus-5-5",
 }
 
@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     llm_timeout_seconds: float = 120.0
     # Large model for the feedback report (scores are taken as final). Empty = provider default below.
     report_llm_model: str = ""
+    # Gemini 3 thinking level for the report: "low" (fast) or "high" (slower, deeper). Empty = model default.
+    report_thinking_level: str = "high"
 
     # ---------- Speech-to-text ----------
     stt_provider: Literal["local", "deepgram", "assemblyai", "openai"] = "local"

@@ -1,0 +1,55 @@
+Interviewer
+00:00
+Hi there! Thanks for joining today. Let's start with you walking me through your background and what led you to apply for this mid-level AI Engineer role.
+
+You
+00:25
+um [breath] By the way, what do you call the system alo? [breath] What are you already talking? [breath] um How am I engineering? AI engineer, don't you have anything to say? [breath] I've completed my graduation from his t- honours and I'm looking forward to work as AI engineer.
+
+Interviewer
+00:26
+Thanks. Could you tell me more about your specific experience and what specifically excites you about an AI Engineer role at this stage of your career?
+
+You
+00:40
+Systems uh system.
+
+Interviewer
+00:41
+Can you elaborate on what specifically draws you to AI engineering, rather than, say, data science or research?
+
+You
+00:43
+Research nigga.
+
+Interviewer
+00:44
+Let's shift a bit. Can you walk me through a specific AI system or project you helped build or integrate? What was your role?
+
+You
+00:45
+[breath]
+
+Interviewer
+00:46
+Can you describe any specific project where you worked with AI, perhaps helping to get a model ready for use, and what exactly you did?
+
+You
+00:53
+I tend to use AI for editing videos.
+
+Interviewer
+00:54
+Interesting. Can you describe your specific role in building or integrating the AI features for video editing? What engineering tasks did you perform?
+
+You
+00:55
+[breath]
+
+Interviewer
+00:56
+When you're working with an AI model, how do you approach making sure it performs reliably once it's actually used by users?
+
+You
+00:58
+um

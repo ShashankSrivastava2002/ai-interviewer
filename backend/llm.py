@@ -39,14 +39,14 @@ Message = dict[str, str]  # {"role": "user" | "assistant", "content": str}
 
 async def chat(system: str, messages: list[Message], json_mode: bool = True,
                max_tokens: int = 2048, settings: Settings | None = None, timeout: float | None = None,
-               temperature: float | None = None, model: str | None = None) -> Any:
+               temperature: float | None = None, model: str | None = None, thinking: str | None = None) -> Any:
     s = settings or get_settings()
     if timeout:
         s = s.model_copy(update={"llm_timeout_seconds": max(timeout, s.llm_timeout_seconds)})
     if not s.resolved_llm_key and not (s.llm_provider == "openai" and s.llm_base_url):
         raise LLMError(f"No API key for LLM provider '{s.llm_provider}'. Add it to backend/.env.")
 
-    text = await _call(s, system, messages, json_mode, max_tokens, temperature, model)
+    text = await _call(s, system, messages, json_mode, max_tokens, temperature, model, thinking)
     if not json_mode:
         return text
     try:
@@ -57,7 +57,7 @@ async def chat(system: str, messages: list[Message], json_mode: bool = True,
             {"role": "assistant", "content": text},
             {"role": "user", "content": "That was not valid JSON. Reply again with ONLY the JSON object, no prose, no code fences."},
         ]
-        text = await _call(s, system, retry_msgs, json_mode, max_tokens, temperature, model)
+        text = await _call(s, system, retry_msgs, json_mode, max_tokens, temperature, model, thinking)
         try:
             return parse_json(text)
         except ValueError as e:
@@ -86,7 +86,8 @@ def parse_json(text: str) -> Any:
 # ---------------------------------------------------------------------------
 
 async def _call(s: Settings, system: str, messages: list[Message], json_mode: bool, max_tokens: int,
-                temperature: float | None = None, model_override: str | None = None) -> str:
+                temperature: float | None = None, model_override: str | None = None,
+                thinking: str | None = None) -> str:
     provider = s.llm_provider
     model = model_override or s.resolved_llm_model
     t0 = time.perf_counter()
@@ -117,6 +118,9 @@ async def _call(s: Settings, system: str, messages: list[Message], json_mode: bo
         if json_mode:
             body["response_format"] = {"type": "json_object"}
 
+    if thinking and provider == "gemini" and model.startswith("gemini-3"):
+        # Gemini 3 "thinking level": low is much faster; high reasons longer before answering.
+        body["generationConfig"]["thinkingConfig"] = {"thinkingLevel": thinking}
     if temperature is not None:  # e.g. 0 for reproducible scoring
         if provider == "gemini":
             body["generationConfig"]["temperature"] = temperature

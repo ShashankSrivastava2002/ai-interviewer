@@ -11,6 +11,7 @@ Python only:
   * checks every evidence quote against the verbatim transcript and FLAGS unverified ones
     for display (verified: true/false). It never changes a level or a score.
   * Overall /100 = plain average of the four competency scores (HackerRank-style aggregate).
+  * Per-question scores are direct 0–100 from the model; the band label is derived from the number.
   * Bands: Weak < 30 <= Moderate < 50 <= Good < 75 <= Excellent.
 """
 from __future__ import annotations
@@ -151,8 +152,13 @@ def build_report(raw: Any, plan: dict[str, Any], questions: list[dict[str, Any]]
             if n not in answers or n in assigned:
                 continue
             assigned.add(n)
-            rating = str(qc.get("rating", "")).strip().capitalize()
-            qcards.append({"question": n, "rating": rating if rating in RATINGS else "Not rated",
+            q_score = _score(qc.get("score"))
+            if q_score is not None:
+                rating = band(q_score)          # label always matches the number
+            else:                               # older reports: label only
+                rating = str(qc.get("rating", "")).strip().capitalize()
+                rating = rating if rating in RATINGS else "Not rated"
+            qcards.append({"question": n, "score": q_score, "rating": rating,
                            "verdict": str(qc.get("verdict", "")), "strong_answer": str(qc.get("strong_answer", ""))})
 
         score = _score(rc.get("score"))
@@ -175,13 +181,13 @@ def build_report(raw: Any, plan: dict[str, Any], questions: list[dict[str, Any]]
     for q in questions:
         if q["number"] in answers and q["number"] not in assigned:
             target = by_key.get(q.get("section") or "", by_key["technical_background"])
-            target["questions"].append({"question": q["number"], "rating": "Not rated", "verdict": "", "strong_answer": ""})
+            target["questions"].append({"question": q["number"], "score": None, "rating": "Not rated", "verdict": "", "strong_answer": ""})
             target["questions"].sort(key=lambda x: x["question"])
 
     scored = [c["score"] for c in competencies if c["score"] is not None]
     overall = round(sum(scored) / len(scored)) if scored else None
     return {
-        "version": 4,
+        "version": 5,
         "overall_score": overall,
         "overall_band": band(overall),
         "overall_summary": str(raw.get("overall_summary", "")),

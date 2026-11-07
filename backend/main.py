@@ -647,15 +647,40 @@ async def submit_answer(
         return AnswerResult(question_id=question_id, skipped=ans.skipped, verbatim_tokens=tokens, stats=stats, next=nxt)
 
 
+def recompute_answers(dbs, session_id: int) -> int:
+    """Re-run pause detection, disfluency tagging and fluency stats on every saved answer."""
+    n = 0
+    for a in db.answers_for(dbs, session_id).values():
+        if a.skipped:
+            continue
+        words = json.loads(a.words_json or "[]")
+        wav = _wav_path(a)
+        p = audio.detect_pauses(wav, words)
+        tokens = disfluency.build_timeline(words, p["pauses"])
+        stats = fluency.answer_stats(tokens, p["thinking_time"], p["duration"] or a.duration)
+        a.tokens_json, a.stats_json, a.thinking_time = json.dumps(tokens), json.dumps(stats), p["thinking_time"]
+        if p["duration"]:
+            a.duration = p["duration"]
+        dbs.add(a)
+        n += 1
+    dbs.commit()
+    log.info("event=answers_recomputed session=%s answers=%d", session_id, n)
+    return n
+
+
 @app.post("/api/sessions/{session_id}/feedback", response_model=SessionDetail)
 async def make_feedback(session_id: int, regenerate: bool = False) -> SessionDetail:
     with db.get_db() as dbs:
         sess = load_session(dbs, session_id)
         existing = db.report_for(dbs, session_id)
-        if existing and not regenerate and json.loads(existing.report_json).get("version", 1) >= 4:
+        if existing and not regenerate and json.loads(existing.report_json).get("version", 1) >= 5:
             return session_detail(dbs, sess)
 
         qs = db.questions_for(dbs, session_id)
+        if regenerate:
+            # Full re-assessment with the CURRENT code: rebuild pauses, disfluency tags and stats from the saved
+            # recording + STT words (speech-to-text itself is not re-run), then the old report is replaced below.
+            recompute_answers(dbs, session_id)
         answers = db.answers_for(dbs, session_id)
         per_answer, q_payload = [], []
         for q in qs:
@@ -682,19 +707,26 @@ async def make_feedback(session_id: int, regenerate: bool = False) -> SessionDet
         s_stats = fluency.session_stats(per_answer)
         setup = {"role": sess.role, "level": sess.level, "interview_type": sess.interview_type,
                  "minutes": sess.duration_minutes}
+        log.info("calling LLM")
         raw = await llm.chat(prompts.REPORT_SYSTEM,
                              [{"role": "user", "content": prompts.report_user_message(setup, plan, q_payload, s_stats, ctx_of(sess))}],
                              # Long (60–90 min) interviews need a much bigger report budget and more time.
                              json_mode=True, max_tokens=min(60000, 24000 + 1500 * len(q_payload)),
                              # Gemini 3 models are tuned for their default temperature; others run at 0 for stability.
                              temperature=None if report_model.startswith("gemini-3") else 0,
-                             model=report_model, timeout=240 + 10 * len(q_payload))
+                             model=report_model, thinking=settings.report_thinking_level or None,
+                             timeout=240 + 10 * len(q_payload))
+
+
+        log.info("event=report_raw session=%s model=%s", session_id, report_model)
+        
         try:
             report = scoring.build_report(raw, plan, q_payload, s_stats)
         except ValueError as e:
             raise llm.LLMError("The AI returned an invalid report. Please try again.") from e
         report["generated_with"] = {"llm": settings.llm_provider, "model": report_model,
                                     "stt": stt_service.status()["name"]}
+        report["assessed_at"] = datetime.now(timezone.utc).isoformat()
 
         await build_recording(sess, qs, answers)
 

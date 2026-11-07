@@ -83,3 +83,13 @@ def test_missing_score_stays_missing():
 def test_disfluency_rate_fact():
     assert scoring.disfluency_rate({"word_count": 100, "fillers": {"total": 6}, "repetitions": 4, "false_starts": 1, "stammers": 0}) == 11.0
     assert scoring.disfluency_rate({"word_count": 0}) is None
+
+
+def test_question_score_is_direct_and_band_is_derived():
+    raw = {"competencies": [comp("technical_background", [2], ["I have hosted it over the Kubernetes"], score=60,
+                                 questions=[{"question": 2, "score": 42, "rating": "Excellent", "verdict": "v", "strong_answer": "s"},
+                                            {"question": 1, "score": 81}])]}
+    r = scoring.build_report(raw, PLAN, QUESTIONS, STATS)
+    qs = {q["question"]: q for c in r["competencies"] for q in c["questions"]}
+    assert (qs[2]["score"], qs[2]["rating"]) == (42, "Moderate")    # the label follows the number, not the model's word
+    assert (qs[1]["score"], qs[1]["rating"]) == (81, "Excellent")

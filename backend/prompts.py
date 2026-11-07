@@ -73,7 +73,7 @@ STANDARD_EXPECTATIONS: dict[str, list[str]] = {
         "Discusses limitations, failure modes, or what they would do differently",
     ],
     "impact_ownership": [
-        "Uses 'I' to make their personal contribution clearly distinct from the team's work",
+        "Addresses his/her personal contribution clearly distinct from the team's work",
         "Quantifies outcomes, including business impact (cost, time saved, revenue, users), not only technical metrics",
         "Describes a decision or initiative they owned end-to-end, including follow-through after launch",
     ],
@@ -226,7 +226,9 @@ You receive:
 1. Interview setup (role, level, format) and any CONTEXT: resume, job description, additional notes about the company.
    Judge Role Alignment against the job description and company notes when given (did they connect their experience
    to what this role and company need?). Strong answers may use facts from the resume.
-2. The interview PLAN: four competency sections, each with expectations that have ids like "role_alignment.1".
+2. The interview PLAN: four competencies, each with a DEFINITION (what a recruiter assesses in it) and expectations
+   with ids like "role_alignment.1". Judge each competency by its definition; the expectations are the concrete
+   checks that make up the evidence. Put each observation under the competency whose definition it belongs to.
 3. Every question numbered "Question N" (follow-ups are numbered too) with the candidate's VERBATIM answer. Fillers
    (um, uh), repetitions, false starts ("to a—") and pauses ("…") are exactly as spoken.
 4. MEASURED FACTS computed by software: fillers/min, repetitions and false starts, pauses, pace, "I" vs "we" share,
@@ -288,9 +290,12 @@ WRITING THE REPORT:
 - Be specific to what they actually said: name their projects, numbers and phrases. Kind, direct, practical.
 - "seen_in" lists question numbers (integers) where the point is visible.
 - Assign EVERY answered question to exactly one competency (its main focus) in that competency's "questions" list,
-  with a rating band on the same scale (Weak | Moderate | Good | Excellent; empty, silent, one-line or off-topic
-  answers are always Weak), "verdict" (why it needs improvement, or why it worked if
-  Good/Excellent; 1–3 sentences), and "strong_answer" (a first-person model answer built from THEIR real experience,
+  with a direct "score" 0–100 for how well THAT answer answered THAT question, using the same anchored scale as the
+  competencies (0–14 nothing usable · 15–29 weak · 30–49 moderate · 50–74 good · 75–89 excellent · 90–100 extremly excellent : rare).
+  Judge the answer on: did it answer what was asked; specific, concrete, first-hand evidence; personal ownership ("I");
+  structure (headline first); and its measured delivery facts. Empty, silent, one-line or off-topic answers score
+  under 15; answers with >= 8 disfluencies per 100 words can't score above 65. Then "verdict" (why it needs
+  improvement, or why it worked if 50+; 1–3 sentences), and "strong_answer" (a first-person model answer built from THEIR real experience,
   headline first, 4–7 sentences, spoken style; never invent achievements they did not mention — use placeholders
   like "[metric]" if needed).
 
@@ -308,7 +313,7 @@ Reply with JSON only, exactly this shape:
       "expectations": [{"id": "role_alignment.1", "level": 0-3, "evidence": [{"question": 2, "quote": "exact words"}]}],
       "improvements": [{"title": "short imperative", "detail": "2–4 sentences", "seen_in": [7]}],
       "strengths": [{"title": "short", "detail": "2–4 sentences", "seen_in": [2]}],
-      "questions": [{"question": 7, "rating": "Moderate", "verdict": "...", "strong_answer": "..."}]
+      "questions": [{"question": 7, "score": 0-100, "verdict": "...", "strong_answer": "..."}]
     }
   ]
 }
@@ -324,6 +329,7 @@ def plan_for_prompt(plan: dict[str, Any]) -> list[dict[str, Any]]:
         out.append({
             "key": c["key"],
             "name": c["name"],
+            "definition": c["description"],
             "expectations": [{"id": f'{c["key"]}.{i + 1}', "text": e} for i, e in enumerate(s.get("expectations", []))],
         })
     return out

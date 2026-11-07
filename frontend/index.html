@@ -308,7 +308,7 @@
         <div class="orb" data-state="thinking" aria-hidden="true">
           <span class="orb-ring r1"></span><span class="orb-ring r2"></span><span class="orb-ring r3"></span><span class="orb-core"></span>
         </div>
-        <h2 class="title">Writing your feedback…</h2>
+        <h2 class="title" id="loading-title">Writing your feedback…</h2>
         <p class="muted" id="loading-text">Counting fillers and pauses, then reviewing your answers. This can take up to a minute.</p>
         <p id="loading-error" class="form-error" role="alert" hidden></p>
         <div class="row-gap" id="loading-actions" hidden>
@@ -359,7 +359,7 @@
       <h3 id="confirm-title">End the interview?</h3>
       <p id="confirm-body" class="muted">You'll still get feedback on the questions you've answered.</p>
       <div class="row-gap end">
-        <button value="cancel" class="btn btn-ghost" type="submit">Keep going</button>
+        <button value="cancel" class="btn btn-ghost" type="submit" id="confirm-cancel">Keep going</button>
         <button value="ok" class="btn btn-primary" type="submit" id="confirm-ok">End &amp; get feedback</button>
       </div>
     </form>

@@ -11,6 +11,7 @@ rubric + REPORT_LLM_MODEL) several times and compares the overall score with a t
 Cases (add your own as transcripts in the same "You/Interviewer" format):
   hackerrank_screen.txt   real HackerRank screen; HackerRank scored it 45/63/55/32 -> 49 Moderate
   strong_candidate.txt    crisp, headline-first, "I"-owned, quantified answers -> should be 75+
+  bad_candidate.txt       silence, one-word, off-topic and offensive answers -> should be 0–25
 """
 from __future__ import annotations
 
@@ -37,8 +38,8 @@ TEXT_CASES = [
     ("HackerRank real screen", HERE / "hackerrank_screen.txt", (42, 56),
      {"role_alignment": 45, "technical_background": 63, "impact_ownership": 55, "communication": 32}),
     ("Strong crisp candidate", HERE / "strong_candidate.txt", (75, 100), None),
+    ("Bad candidate", HERE / "bad_candidate.txt", (0, 25), None),
 ]
-DB_TARGET = (0, 25)   # the saved "bad interview"
 
 
 def from_text(path: Path) -> list[dict]:
@@ -84,7 +85,7 @@ def from_db(session_id: int) -> list[dict]:
         return out
 
 
-async def score_once(questions: list[dict], model: str) -> tuple[float, dict]:
+async def score_once(questions: list[dict], model: str, thinking: str | None = None) -> tuple[float, dict]:
     per = [{"question_id": q["id"], "index": q["number"], "stats": q["stats"]} for q in questions if q["stats"]]
     stats = fluency.session_stats(per)
     setup = {"role": "AI Engineer", "level": "Mid", "interview_type": "technical", "minutes": 30}
@@ -93,25 +94,32 @@ async def score_once(questions: list[dict], model: str) -> tuple[float, dict]:
     raw = await llm.chat(prompts.REPORT_SYSTEM,
                          [{"role": "user", "content": prompts.report_user_message(setup, plan, questions, stats, {"jd": JD})}],
                          json_mode=True, max_tokens=60000, model=model, timeout=600,
-                         temperature=None if model.startswith("gemini-3") else 0)
+                         temperature=None if model.startswith("gemini-3") else 0, thinking=thinking)
     return time.time() - t0, scoring.build_report(raw, plan, questions, stats)
 
 
 async def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--runs", type=int, default=3)
-    ap.add_argument("--db-session", type=int, help="also score this saved interview (target 0–25)")
+    ap.add_argument("--db-session", type=int, help="also score this saved interview (no target; shows its scores)")
+    ap.add_argument("--model", help="override REPORT_LLM_MODEL for this run")
+    ap.add_argument("--thinking", choices=["low", "high"], help="Gemini 3 thinking level (default: settings)")
+    ap.add_argument("--only", help="run only cases whose name contains this text")
     args = ap.parse_args()
 
-    model = get_settings().resolved_report_model
+    s = get_settings()
+    model = args.model or s.resolved_report_model
+    thinking = args.thinking or (s.report_thinking_level or None)
     cases = [(n, from_text(p), tgt, ref) for n, p, tgt, ref in TEXT_CASES]
+    if args.only:
+        cases = [c for c in cases if args.only.lower() in c[0].lower()]
     if args.db_session:
-        cases.append((f"Saved interview #{args.db_session}", from_db(args.db_session), DB_TARGET, None))
-    print(f"Report model: {model} · {args.runs} run(s) per case\n")
+        cases.append((f"Saved interview #{args.db_session}", from_db(args.db_session), (0, 100), None))
+    print(f"Report model: {model} · thinking {thinking or 'default'} · {args.runs} run(s) per case\n")
 
     failures, results = 0, {}
     for name, questions, (lo, hi), ref in cases:
-        runs = await asyncio.gather(*(score_once(questions, model) for _ in range(args.runs)), return_exceptions=True)
+        runs = await asyncio.gather(*(score_once(questions, model, thinking) for _ in range(args.runs)), return_exceptions=True)
         print(f"### {name}   target overall {lo}–{hi}")
         print(f"{'':12}" + "".join(f"{k[:13]:>15}" for k in KEYS) + f"{'overall':>9}")
         if ref:
@@ -132,6 +140,8 @@ async def main() -> int:
         if ok_reports:
             for x in ok_reports[0]["competencies"]:
                 print(f"   · {x['name']} {x['score']}: {x['score_rationale'][:220]}")
+            qsc = sorted((q["question"], q.get("score")) for x in ok_reports[0]["competencies"] for q in x["questions"])
+            print("   · per-question scores (run 1): " + ", ".join(f"Q{n} {sc}" for n, sc in qsc))
         results[name] = ok_reports
         print()
 
