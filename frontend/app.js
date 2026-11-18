@@ -866,8 +866,11 @@ function confirmDialog({
   body = "You'll still get feedback on the questions you've answered.",
   ok = "End & get feedback",
   cancel = "Keep going",
+  danger = false,
 } = {}) {
   const dlg = $("#confirm-dialog");
+  $("#confirm-ok").classList.toggle("btn-danger", danger);
+  $("#confirm-ok").classList.toggle("btn-primary", !danger);
   $("#confirm-title").textContent = title;
   $("#confirm-body").textContent = body;
   $("#confirm-ok").textContent = ok;
@@ -1051,6 +1054,85 @@ function stopLive() {
 // ---------------------------------------------------------------------
 // Feedback generation
 // ---------------------------------------------------------------------
+/** Candidate details for one interview: setup choices + the resume, JD and notes that were entered. */
+async function showDetails(id) {
+  const dlg = $("#details-dialog");
+  const body = $("#details-body");
+  $("#details-title").textContent = "Loading…";
+  body.innerHTML = "";
+  dlg.showModal();
+  let d = state.detailCache[id];
+  try {
+    if (!d) { d = await api(`/api/sessions/${id}`); state.detailCache[id] = d; }
+  } catch (e) {
+    $("#details-title").textContent = "Couldn't load details";
+    body.innerHTML = `<p class="form-error">${esc(e.message)}</p>`;
+    return;
+  }
+  $("#details-title").textContent = d.role;
+  if (!("resume_text" in d)) {
+    // The API predates candidate details: the server is running old code.
+    delete state.detailCache[id];
+    body.innerHTML = `<p class="form-error">The server is running an older version that doesn't return the resume, JD and notes.
+      Restart it (Ctrl+C, then <code>.venv/bin/uvicorn backend.main:app --reload</code>) and try again.</p>`;
+    return;
+  }
+  const meta = [
+    ["Role", d.role], ["Level", d.level], ["Interview type", TYPE_LABEL[d.interview_type] || d.interview_type],
+    ["Length", `${d.duration_minutes} min planned${d.session_seconds ? ` · ${Math.max(1, Math.round(d.session_seconds / 60))} min taken` : ""}`],
+    ["Date", fmtDate(d.created_at)],
+    ["Questions asked", String(d.questions.length)],
+    ["Score", d.report?.overall_score != null ? `${d.report.overall_score}/100 · ${d.report.overall_band || ""}` : "No report yet"],
+  ];
+  const block = (key, title, text) => `
+    <section class="detail-block">
+      <div class="detail-block-head">
+        <h4>${title}</h4>
+        ${text ? `<span class="muted small">${text.length.toLocaleString()} chars</span>
+          <button type="button" class="btn btn-ghost btn-sm" data-copy="${key}">Copy</button>` : ""}
+      </div>
+      ${text ? `<pre class="detail-text" id="detail-${key}">${esc(text)}</pre>` : `<p class="muted small">Not provided.</p>`}
+    </section>`;
+  body.innerHTML = `
+    <dl class="detail-meta">${meta.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl>
+    ${block("resume", "Resume", d.resume_text)}
+    ${block("jd", "Job description", d.jd_text)}
+    ${block("notes", "Notes", d.notes_text)}
+    <div class="row-gap end"><a class="btn btn-primary btn-sm" href="#/report/${d.id}" id="details-open">Open report</a></div>`;
+  $("#details-open").onclick = () => dlg.close();
+  body.onclick = async (e) => {
+    const b = e.target.closest("[data-copy]");
+    if (!b) return;
+    try {
+      await navigator.clipboard.writeText($(`#detail-${b.dataset.copy}`).textContent);
+      toast("Copied");
+    } catch { toast("Copy failed — select the text and copy manually."); }
+  };
+}
+$("#details-close").addEventListener("click", () => $("#details-dialog").close());
+$("#details-dialog").addEventListener("click", (e) => { if (e.target.id === "details-dialog") e.target.close(); }); // click outside
+
+/** Hard delete: interview, transcript, report and recordings. Can't be undone. */
+async function deleteInterview(id, label = "", fromReport = false) {
+  const ok = await confirmDialog({
+    title: "Delete this interview permanently?",
+    body: `${label ? label + " — " : ""}its transcript, scores, report and audio recordings will be erased. This can't be undone.`,
+    ok: "Delete permanently",
+    cancel: "Cancel",
+    danger: true,
+  });
+  if (!ok) return;
+  try {
+    await api(`/api/sessions/${id}`, { method: "DELETE" });
+    delete state.detailCache[id];
+    toast("Interview deleted");
+    if (fromReport || location.hash !== "#/history") location.hash = "#/history";
+    else loadHistory();
+  } catch (e) {
+    toast(`Couldn't delete: ${e.message}`, 4000);
+  }
+}
+
 /** Re-run the whole assessment with the current code and replace the old report. */
 async function reassess(id) {
   const ok = await confirmDialog({
@@ -1068,8 +1150,8 @@ async function generateFeedback(id, regenerate = false) {
   show("loading");
   $("#loading-title").textContent = regenerate ? "Re-assessing your interview…" : "Writing your feedback…";
   $("#loading-text").textContent = regenerate
-    ? "Re-analysing your saved answers with the current code, then re-scoring. The old assessment will be replaced. About 1–2 minutes."
-    : "Counting fillers and pauses, then reviewing your answers. This can take 1–2 minutes.";
+    ? "Re-analysing your saved answers, re-scoring, then rewriting each answer. The old assessment will be replaced. This can take 2–3 minutes."
+    : "Scoring your answers, then rewriting each one from your feedback. This can take 2–3 minutes.";
   $("#loading-error").hidden = true;
   $("#loading-actions").hidden = true;
   try {
@@ -1379,7 +1461,8 @@ function questionCardHTML(d, qc) {
     <div class="transcript">${a?.tokens?.length ? renderTokens(a.tokens) : '<span class="muted">No speech detected.</span>'}</div>
     ${statLine}
     ${qc.verdict ? `<p class="qa-label">${good ? "Why this worked:" : "Why this needs improvement:"}</p><p>${esc(qc.verdict)}</p>` : ""}
-    ${qc.strong_answer ? `<p class="qa-label">Strong Answer:</p><p class="strong-answer">${esc(qc.strong_answer)}</p>` : ""}
+    ${qc.strong_answer ? `<p class="qa-label">Strong Answer:</p><p class="strong-answer">${esc(qc.strong_answer)}</p>`
+      : d.report.strong_answers_incomplete ? `<p class="muted small">The strong answer couldn't be written. Use Re-assess to try again.</p>` : ""}
   </article>`;
 }
 
@@ -1398,7 +1481,10 @@ function renderReport(d) {
     <article class="card report-main">
       <div class="report-titlebar">
         <h1 class="report-title">${esc(REPORT_TITLE[d.interview_type] || "Interview Feedback")}</h1>
-        <button type="button" class="btn btn-secondary btn-sm no-print" id="reassess-top" title="Re-run the assessment with the current code and replace this report">↻ Re-assess</button>
+        <div class="row-actions no-print">
+          <button type="button" class="btn btn-secondary btn-sm" id="reassess-top" title="Re-run the assessment with the current code and replace this report">↻ Re-assess</button>
+          <button type="button" class="btn btn-ghost btn-sm delete-btn" id="delete-top" title="Permanently delete this interview">Delete</button>
+        </div>
       </div>
       <p class="report-meta">${esc(date)}<i>•</i>${mins} min session<i>•</i>${esc(d.role)}${r.assessed_at ? `<i>•</i>assessed ${esc(fmtDate(r.assessed_at))}` : ""}</p>
 
@@ -1595,6 +1681,7 @@ function wireReport(d) {
   $("#act-retry").onclick = () => { beginCreate({ retry_of: d.id }); location.hash = "#/mic"; };
   $("#act-pdf").onclick = () => window.print();
   $("#reassess-top").onclick = () => reassess(d.id);
+  $("#delete-top").onclick = () => deleteInterview(d.id, `${d.role} · ${fmtDate(d.created_at)}`, true);
   $("#regen-top")?.addEventListener("click", () => reassess(d.id));
   $("#act-csv").onclick = () => download(`interview-${d.id}.csv`, reportCsv(d), "text/csv");
   $("#act-txt").onclick = () => download(`interview-${d.id}-verbatim.txt`, verbatimTxt(d), "text/plain");
@@ -1718,13 +1805,18 @@ async function loadHistory() {
           ${o != null ? `<span class="score-badge" title="Overall">${o}/100</span>` : `<span class="score-badge none">${s.status === "active" ? "Unfinished" : "No report"}</span>`}
           ${s.fluency_score != null ? `<span class="score-badge flu" title="Delivery">Delivery ${Math.round(s.fluency_score * 10)}</span>` : "<span></span>"}
         </a>
-        <button type="button" class="btn btn-ghost btn-sm reassess-btn" data-reassess="${s.id}" title="Re-run the assessment with the current code and replace the old one">↻ Re-assess</button>
+        <div class="row-actions">
+          <button type="button" class="btn btn-ghost btn-sm" data-details="${s.id}" title="Role, resume, job description and notes">Details</button>
+          <button type="button" class="btn btn-ghost btn-sm delete-btn" data-delete="${s.id}" data-label="${esc(s.role)} · ${esc(fmtDate(s.created_at))}" title="Permanently delete this interview">Delete</button>
+        </div>
       </li>`;
     }).join("");
 
     list.onclick = (e) => {
-      const b = e.target.closest("[data-reassess]");
-      if (b) reassess(Number(b.dataset.reassess));
+      const det = e.target.closest("[data-details]");
+      if (det) showDetails(Number(det.dataset.details));
+      const d = e.target.closest("[data-delete]");
+      if (d) deleteInterview(Number(d.dataset.delete), d.dataset.label);
     };
     const scored = sessions.filter((s) => s.overall_score != null).reverse(); // oldest → newest
     $("#history-chart-card").hidden = scored.length < 1;

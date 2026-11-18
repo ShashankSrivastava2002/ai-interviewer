@@ -27,7 +27,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
-from backend import db, disfluency, fluency, llm, prompts, scoring  # noqa: E402
+from backend import db, disfluency, fluency, llm, prompts, scoring, strong_answers  # noqa: E402
 from backend.config import get_settings  # noqa: E402
 
 KEYS = ["role_alignment", "technical_background", "impact_ownership", "communication"]
@@ -95,7 +95,9 @@ async def score_once(questions: list[dict], model: str, thinking: str | None = N
                          [{"role": "user", "content": prompts.report_user_message(setup, plan, questions, stats, {"jd": JD})}],
                          json_mode=True, max_tokens=60000, model=model, timeout=600,
                          temperature=None if model.startswith("gemini-3") else 0, thinking=thinking)
-    return time.time() - t0, scoring.build_report(raw, plan, questions, stats)
+    report = scoring.build_report(raw, plan, questions, stats)
+    await strong_answers.add_strong_answers(report, setup, questions, {"jd": JD}, model, thinking)
+    return time.time() - t0, report
 
 
 async def main() -> int:

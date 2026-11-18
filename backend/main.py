@@ -34,7 +34,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import audio, db, disfluency, fluency, llm, prompts, scoring
+from . import audio, db, disfluency, fluency, llm, prompts, scoring, strong_answers
 from .config import PROJECT_DIR, get_settings, setup_logging
 from .stt import STTError, STTService
 
@@ -78,6 +78,9 @@ app.add_middleware(
 async def access_log(request: Request, call_next):
     t0 = time.perf_counter()
     response = await call_next(request)
+    if not request.url.path.startswith("/api/"):
+        # Frontend files: always revalidate, so a code change shows up on the next page load.
+        response.headers["Cache-Control"] = "no-cache"
     if request.url.path.startswith("/api/"):
         log.info("event=request method=%s path=%s status=%s ms=%.0f",
                  request.method, request.url.path, response.status_code, (time.perf_counter() - t0) * 1000)
@@ -108,9 +111,9 @@ class SessionCreate(BaseModel):
     level: Literal["Fresher", "Mid", "Senior"] = "Mid"
     interview_type: Literal["technical", "behavioural", "mixed"] = "mixed"
     duration_minutes: int = Field(default=30, ge=5, le=90)
-    resume_text: Optional[str] = Field(default=None, max_length=20000)
-    jd_text: Optional[str] = Field(default=None, max_length=20000)
-    notes_text: Optional[str] = Field(default=None, max_length=10000)
+    resume_text: Optional[str] = Field(default=None, max_length=prompts.CONTEXT_LIMITS["resume"])
+    jd_text: Optional[str] = Field(default=None, max_length=prompts.CONTEXT_LIMITS["jd"])
+    notes_text: Optional[str] = Field(default=None, max_length=prompts.CONTEXT_LIMITS["notes"])
     retry_of: Optional[int] = Field(default=None, description="Re-run the main questions of this session")
 
 
@@ -181,6 +184,10 @@ class SessionDetail(BaseModel):
     duration_minutes: int
     session_seconds: float
     status: str
+    # Candidate details entered at setup
+    resume_text: Optional[str] = None
+    jd_text: Optional[str] = None
+    notes_text: Optional[str] = None
     plan: Optional[dict[str, Any]] = None
     questions: list[QuestionDetail]
     recording: Optional[dict[str, Any]] = None
@@ -352,6 +359,7 @@ def session_detail(dbs, sess: db.InterviewSession) -> SessionDetail:
         id=sess.id, created_at=iso(sess.created_at), started_at=iso(sess.started_at), role=sess.role,
         level=sess.level, interview_type=sess.interview_type, duration_minutes=sess.duration_minutes or 30,
         session_seconds=round(max(0.0, session_seconds), 1), status=sess.status, plan=session_plan(sess),
+        resume_text=sess.resume_text, jd_text=sess.jd_text, notes_text=sess.notes_text,
         questions=out_qs,
         recording={"url": f"/api/sessions/{sess.id}/recording", "chapters": recording_chapters(sess, qs, answers)} if rec else None,
         report=json.loads(rep.report_json) if rep else None,
@@ -724,6 +732,9 @@ async def make_feedback(session_id: int, regenerate: bool = False) -> SessionDet
             report = scoring.build_report(raw, plan, q_payload, s_stats)
         except ValueError as e:
             raise llm.LLMError("The AI returned an invalid report. Please try again.") from e
+        # Second call: rewrite each answer from the original answer + the feedback just written.
+        await strong_answers.add_strong_answers(report, setup, q_payload, ctx_of(sess), report_model,
+                                                settings.report_thinking_level or None)
         report["generated_with"] = {"llm": settings.llm_provider, "model": report_model,
                                     "stt": stt_service.status()["name"]}
         report["assessed_at"] = datetime.now(timezone.utc).isoformat()
@@ -761,6 +772,26 @@ async def list_sessions() -> list[SessionSummary]:
 async def get_session(session_id: int) -> SessionDetail:
     with db.get_db() as dbs:
         return session_detail(dbs, load_session(dbs, session_id))
+
+
+class DeleteResult(BaseModel):
+    deleted: bool
+    session_id: int
+    rows: dict[str, int]
+    audio_files: int
+
+
+@app.delete("/api/sessions/{session_id}", response_model=DeleteResult)
+async def delete_session(session_id: int) -> DeleteResult:
+    """Hard delete: the interview, its questions, answers and report, plus all its recordings on disk."""
+    with db.get_db() as dbs:
+        load_session(dbs, session_id)  # 404 if it doesn't exist
+        rows = db.delete_session(dbs, session_id)
+    folder = settings.audio_dir / str(session_id)
+    n_files = sum(1 for p in folder.rglob("*") if p.is_file()) if folder.exists() else 0
+    shutil.rmtree(folder, ignore_errors=True)
+    log.info("event=session_deleted id=%s rows=%s audio_files=%d", session_id, rows, n_files)
+    return DeleteResult(deleted=True, session_id=session_id, rows=rows, audio_files=n_files)
 
 
 @app.get("/api/sessions/{session_id}/recording")

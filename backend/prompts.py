@@ -106,13 +106,18 @@ INTERVIEW_TYPES = {
 }
 
 
-# The three optional inputs from the setup screen, how the agents should use them, and size caps.
+# Max characters for each setup input. ONE source of truth: the API validation (main.SessionCreate) and the
+# prompts both use these, so whatever the form accepts is exactly what the AI reads (no silent truncation).
+# The textareas' maxlength in frontend/index.html should match.
+CONTEXT_LIMITS = {"resume": 20000, "jd": 20000, "notes": 30000}
+
+# The three optional inputs from the setup screen and how the agents should use them.
 CONTEXT_PARTS = [
-    ("resume", "CANDIDATE RESUME", 8000,
+    ("resume", "CANDIDATE RESUME", CONTEXT_LIMITS["resume"],
      "the candidate's real experience: ask about these projects, verify depth and personal ownership"),
-    ("jd", "JOB DESCRIPTION", 6000,
+    ("jd", "JOB DESCRIPTION", CONTEXT_LIMITS["jd"],
      "what the role needs: test these requirements and judge role alignment against them"),
-    ("notes", "ADDITIONAL NOTES", 4000,
+    ("notes", "ADDITIONAL NOTES", CONTEXT_LIMITS["notes"],
      "background from the candidate (company, team, product, interview focus): use it for context and "
      "company-specific questions, and respect any focus areas it mentions"),
 ]
@@ -225,7 +230,7 @@ in the voice of an experienced recruiter coaching the candidate ("you").
 You receive:
 1. Interview setup (role, level, format) and any CONTEXT: resume, job description, additional notes about the company.
    Judge Role Alignment against the job description and company notes when given (did they connect their experience
-   to what this role and company need?). Strong answers may use facts from the resume.
+   to what this role and company need?).
 2. The interview PLAN: four competencies, each with a DEFINITION (what a recruiter assesses in it) and expectations
    with ids like "role_alignment.1". Judge each competency by its definition; the expectations are the concrete
    checks that make up the evidence. Put each observation under the competency whose definition it belongs to.
@@ -258,8 +263,8 @@ Step 2 — Competency score 0–100, using this anchored scale (the same bands t
     15–29  WEAK: minimal or very vague answers; the competency was essentially not demonstrated
     30–49  MODERATE: some relevant evidence, but generic, shallow, unstructured or missing key specifics
     50–74  GOOD: concrete and specific; mostly complete with some gaps (real examples, decisions, numbers)
-    75–89  EXCELLENT: strong, specific, quantified, clear personal ownership and reasoning throughout
-    90–100 Exceptional; very rare
+    75–95  EXCELLENT: strong, specific, quantified, clear personal ownership and reasoning throughout
+    95–100 Exceptional; very rare
   Calibration: a typical real candidate scores 40–60. A technically strong engineer who rambles, relies on "we",
   never states their fit or value, and needs follow-ups to get to the point lands around 40–60 overall, not 70+.
   Scores above 70 require crisp, structured, explicit answers throughout that competency. One short answer can never justify GOOD. A competency with no
@@ -291,13 +296,12 @@ WRITING THE REPORT:
 - "seen_in" lists question numbers (integers) where the point is visible.
 - Assign EVERY answered question to exactly one competency (its main focus) in that competency's "questions" list,
   with a direct "score" 0–100 for how well THAT answer answered THAT question, using the same anchored scale as the
-  competencies (0–14 nothing usable · 15–29 weak · 30–49 moderate · 50–74 good · 75–89 excellent · 90–100 extremly excellent : rare).
+  competencies (0–14 nothing usable · 15–29 weak · 30–49 moderate · 50–74 good · 75–95 excellent · 95–100 extremly excellent : rare).
   Judge the answer on: did it answer what was asked; specific, concrete, first-hand evidence; personal ownership ("I");
   structure (headline first); and its measured delivery facts. Empty, silent, one-line or off-topic answers score
-  under 15; answers with >= 8 disfluencies per 100 words can't score above 65. Then "verdict" (why it needs
-  improvement, or why it worked if 50+; 1–3 sentences), and "strong_answer" (a first-person model answer built from THEIR real experience,
-  headline first, 4–7 sentences, spoken style; never invent achievements they did not mention — use placeholders
-  like "[metric]" if needed).
+  under 15; answers with >= 8 disfluencies per 100 words can't score above 65. Then "verdict" (1–3 sentences: why it
+  worked if 50+; otherwise name exactly what was wrong or missing in THIS answer, e.g. the part of the question left
+  unanswered, the incorrect claim, the missing decision, number or personal contribution).
 
 Reply with JSON only, exactly this shape:
 {
@@ -313,7 +317,7 @@ Reply with JSON only, exactly this shape:
       "expectations": [{"id": "role_alignment.1", "level": 0-3, "evidence": [{"question": 2, "quote": "exact words"}]}],
       "improvements": [{"title": "short imperative", "detail": "2–4 sentences", "seen_in": [7]}],
       "strengths": [{"title": "short", "detail": "2–4 sentences", "seen_in": [2]}],
-      "questions": [{"question": 7, "score": 0-100, "verdict": "...", "strong_answer": "..."}]
+      "questions": [{"question": 7, "score": 0-100, "verdict": "..."}]
     }
   ]
 }
@@ -382,6 +386,92 @@ def _session_facts(st: dict[str, Any], questions: list[dict[str, Any]]) -> dict[
         "questions_answered": sum(1 for q in asked if not q.get("skipped")),
         "questions_skipped": sum(1 for q in asked if q.get("skipped")),
     }
+
+
+STRONG_ANSWER_SYSTEM = """You are an expert interview coach. For each listed question, rewrite the candidate's answer
+into the answer they should have given, using their original answer and the reviewer's feedback.
+
+WHAT A STRONG ANSWER DOES
+- Its first sentence directly answers the exact question asked. Answer every part of the question, and nothing else.
+- It fixes every problem named in that question's feedback. If the feedback says something is missing, supply it
+  from the allowed facts below, or leave a placeholder for it.
+- Experience questions: headline, one line of context, what I personally did and why I chose it (including the
+  trade-off), then the result. Conceptual questions: the correct explanation, then one short link to their own work
+  if they really have one. Fit or motivation questions: connect their real experience to this role's actual needs.
+- A follow-up answers only the follow-up; do not repeat the earlier answer.
+
+TRUTH RULES (most important)
+- Facts about the candidate (projects, employers, tools, numbers, decisions, results) may come ONLY from their answers
+  anywhere in this interview or from their resume. Keep their real project names and numbers.
+- The job description and company notes tell you what to connect to. They are never evidence of what the candidate did.
+- The interviewer's questions and summaries are NOT evidence: a detail counts only if the candidate said it or the
+  resume states it.
+- Never invent an achievement, metric, tool, task, design decision, reason or responsibility. This includes plausible
+  details: if they only said "I use AI for editing videos", you may not say they built a pipeline, wrote a service,
+  handled rate limits or validated outputs. Where a needed fact is unknown, write a placeholder for the WHOLE unknown
+  fact, such as "[what you personally built]", "[latency before and after]" or "[the alternative you rejected]".
+  Do not wrap invented specifics around a placeholder, and do not put invented examples inside one.
+- For "what would you change" questions, keep to the changes the candidate proposed; do not add new techniques as
+  their idea. Questions they could ask the interviewer may be written freely, using the job description and notes.
+- If they said "we", use "I" only for work they clearly did themselves; otherwise use a placeholder such as
+  "[the part you personally owned]".
+- Correct technical mistakes. General technical knowledge may be used to explain a concept correctly, but must not be
+  presented as something the candidate built or did.
+- If the answer was empty, off-topic or inappropriate, keep none of it. Build from their other answers and resume, or
+  give a clear answer outline in first person with placeholders.
+- If the original answer was already strong, keep its substance and only tighten it.
+
+STYLE
+- First person, written for an Indian professional to say aloud in an interview: simple, everyday Indian English that
+  is easy to remember and speak. Sound like this candidate on a good day, using their own words where possible.
+- Write for someone whose first language is not English. Use very common words and short sentences: aim for 8–12
+  words, and never go above 16. One idea per sentence. Split long sentences; avoid long lists and dashes.
+- Prefer "I built", "I used", "the problem was", "so I changed", "because", "this reduced". Say "sent" not
+  "dispatched", "slow" not "high latency" when both fit, "many" not "numerous", "turned into text" not "transcribed",
+  "repeated steps" not "iterative loops", "messy files" not "unstructured documents".
+  Avoid fancy words such as architected, architecturally, spearheaded, leveraged, orchestrated, robust, seamless,
+  utilize, facilitate, synthesized, paradigm and holistic.
+- Style example only (never reuse its facts). Too formal: "I architected an asynchronous pipeline that significantly
+  mitigated latency bottlenecks." Good: "The API was slow. So I moved the heavy work to a background job. Users got a
+  reply much faster."
+- Keep needed technical terms and product names (Kubernetes, Langfuse, RAG). Explain an idea plainly instead of
+  adding more jargon.
+- Grammar must be correct. Do not imitate an accent, add Hindi words, use stereotyped phrases, or add fillers.
+- No bullet points, no headings.
+- Usually 70–160 words (30–60 seconds spoken). Use up to 220 words only when the question has several parts.
+- Do not mention the feedback, the score, or that this is a rewrite.
+
+Before replying, check every sentence of every answer: each claim about the candidate must be traceable to their own
+words or resume. Replace anything that is not with a placeholder. More placeholders are better than one made-up fact.
+
+Reply with JSON only, with one entry for every question listed under QUESTIONS TO REWRITE:
+{"answers": [{"question": 7, "strong_answer": "..."}]}"""
+
+
+def strong_answer_user_message(setup: dict[str, Any], report: dict[str, Any], questions: list[dict[str, Any]],
+                               ctx: dict[str, str | None] | None = None) -> str:
+    """Second report call: full interview for facts, plus the reviewer's feedback on each answer to rewrite."""
+    cards = {}
+    for comp in report.get("competencies", []):
+        for card in comp.get("questions", []):
+            notes = [f'{i["title"]}: {i["detail"]}'.strip(": ") for i in comp.get("improvements", [])
+                     if card["question"] in i.get("seen_in", [])]
+            cards[card["question"]] = {"competency": comp["name"], "score": card.get("score"),
+                                       "feedback": card.get("verdict", ""), "related_improvements": notes}
+    lines = ["INTERVIEW SETUP", json.dumps(setup, ensure_ascii=False), "",
+             "CONTEXT" + (_tailor(ctx) or "\n(none provided)"), "",
+             "FULL INTERVIEW (the source of facts about the candidate)"]
+    for q in questions:
+        answer = "(skipped)" if q.get("skipped") else (q.get("verbatim") or "(no answer)")
+        lines += [f"\nQuestion {q['number']}: {q['text']}", f"Original answer (verbatim): {answer}"]
+    lines += ["", "QUESTIONS TO REWRITE"]
+    for q in questions:
+        if q["number"] in cards:
+            lines.append(json.dumps({"question": q["number"], "asked": q["text"], **cards[q["number"]]}, ensure_ascii=False))
+    lines += ["", "FINAL STYLE CHECK: do not copy the formal wording of the feedback or the interviewer. Every answer must use "
+                  "simple spoken Indian English: very common words, 8–12 word sentences, never above 16 words. "
+                  "Rewrite any sentence that is long or sounds like a document. Keep all truth rules."]
+    return "\n".join(lines)
 
 
 def standard_plan() -> dict[str, Any]:

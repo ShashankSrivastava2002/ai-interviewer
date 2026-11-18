@@ -136,9 +136,9 @@
                   <button type="button" class="link-btn" data-file-for="jd">Load from .txt file</button></span>
               </div>
               <div class="ctx ctx-wide">
-                <span class="ctx-head"><b>Notes</b><span class="muted small" data-count-for="notes">0 / 10,000</span></span>
+                <span class="ctx-head"><b>Notes</b><span class="muted small" data-count-for="notes">0 / 30,000</span></span>
                 <span class="ctx-hint">Anything else: about the company, product or team, the interview round, topics to focus on or avoid.</span>
-                <textarea id="notes" aria-label="Notes" class="input textarea" rows="4" maxlength="10000"
+                <textarea id="notes" aria-label="Notes" class="input textarea" rows="4" maxlength="30000"
                   placeholder="e.g. Series B startup building agent infra for logistics; round 2 of 4 with the hiring manager; focus on RAG evals and on-call stories…"></textarea>
               </div>
             </div>
@@ -354,6 +354,17 @@
   </main>
 
   <!-- Confirm dialog -->
+  <dialog id="details-dialog" class="dialog details-dialog" aria-labelledby="details-title">
+    <div class="details-head">
+      <div>
+        <p class="eyebrow">Candidate details</p>
+        <h3 id="details-title">Interview</h3>
+      </div>
+      <button type="button" class="icon-btn" id="details-close" aria-label="Close">✕</button>
+    </div>
+    <div id="details-body" class="details-body"></div>
+  </dialog>
+
   <dialog id="confirm-dialog" class="dialog">
     <form method="dialog">
       <h3 id="confirm-title">End the interview?</h3>

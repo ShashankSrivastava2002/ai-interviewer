@@ -139,3 +139,21 @@ def list_sessions(db: Session) -> list[tuple[InterviewSession, Optional[Report]]
     sessions = list(db.exec(select(InterviewSession).order_by(InterviewSession.created_at.desc())))
     reports = {r.session_id: r for r in db.exec(select(Report))}
     return [(s, reports.get(s.id)) for s in sessions]
+
+
+def delete_session(db: Session, session_id: int) -> dict[str, int]:
+    """Permanently delete an interview and everything that belongs to it (children first)."""
+    counts = {"reports": 0, "answers": 0, "questions": 0}
+    for r in db.exec(select(Report).where(Report.session_id == session_id)):
+        db.delete(r); counts["reports"] += 1
+    for a in db.exec(select(Answer).where(Answer.session_id == session_id)):
+        db.delete(a); counts["answers"] += 1
+    db.commit()  # answers reference questions; remove them before the questions
+    for q in db.exec(select(Question).where(Question.session_id == session_id)):
+        db.delete(q); counts["questions"] += 1
+    db.commit()
+    sess = db.get(InterviewSession, session_id)
+    if sess:
+        db.delete(sess)
+        db.commit()
+    return counts

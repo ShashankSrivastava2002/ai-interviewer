@@ -17,7 +17,7 @@ PROJECT_DIR = BACKEND_DIR.parent
 
 # Report (scoring) model per provider when REPORT_LLM_MODEL is empty: the largest available.
 DEFAULT_REPORT_MODELS = {
-    "gemini": "gemini-3.8-flash",   # with thinking "low": best calibration and ~2x faster than 3.1-pro
+    "gemini": "gemini-3.1-pro",   # with thinking "low": best calibration and ~2x faster than 3.1-pro
     "anthropic": "claude-opus-5-5",
 }
 
