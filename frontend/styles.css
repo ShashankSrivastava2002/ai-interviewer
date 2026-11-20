@@ -917,3 +917,17 @@ body { font-family: var(--font); font-size: 15px; letter-spacing: -.003em; }
   .card, .qcard, .stat { box-shadow: none; }
   .bar-fill { animation: none; }
 }
+
+/* Evaluation switch and transcript-only report */
+.eval-switch { display: flex; align-items: flex-start; margin: 14px 2px 0; color: var(--text, inherit); }
+.eval-switch input { margin-top: 3px; }
+.eval-switch span { display: flex; flex-direction: column; gap: 2px; }
+.eval-switch small { color: var(--muted); font-size: .84rem; }
+.empty-score { display: flex; align-items: baseline; justify-content: center; gap: 4px; flex-wrap: wrap; padding: 34px 0 20px; }
+.empty-score b { font-size: 2.6rem; line-height: 1; }
+.empty-score small { color: var(--muted); margin-right: 8px; }
+.comp-tile.static { cursor: default; }
+.comp-tile.static:hover { border-color: var(--border); }
+@media print {
+  .transcript-report .synced-list { max-height: none; overflow: visible; }
+}

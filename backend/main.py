@@ -115,6 +115,7 @@ class SessionCreate(BaseModel):
     jd_text: Optional[str] = Field(default=None, max_length=prompts.CONTEXT_LIMITS["jd"])
     notes_text: Optional[str] = Field(default=None, max_length=prompts.CONTEXT_LIMITS["notes"])
     retry_of: Optional[int] = Field(default=None, description="Re-run the main questions of this session")
+    evaluate: bool = Field(default=True, description="False = transcript only: no AI scores or feedback")
 
 
 class QuestionOut(BaseModel):
@@ -184,6 +185,7 @@ class SessionDetail(BaseModel):
     duration_minutes: int
     session_seconds: float
     status: str
+    evaluate: bool = True
     # Candidate details entered at setup
     resume_text: Optional[str] = None
     jd_text: Optional[str] = None
@@ -205,6 +207,7 @@ class SessionSummary(BaseModel):
     overall_score: Optional[float] = None     # /100 (v2 reports); older reports were /10
     fluency_score: Optional[float] = None     # /10, computed from audio
     report_version: Optional[int] = None
+    evaluated: Optional[bool] = None          # None = no report yet; False = transcript only
 
 
 class MicCheckResult(BaseModel):
@@ -358,7 +361,8 @@ def session_detail(dbs, sess: db.InterviewSession) -> SessionDetail:
     return SessionDetail(
         id=sess.id, created_at=iso(sess.created_at), started_at=iso(sess.started_at), role=sess.role,
         level=sess.level, interview_type=sess.interview_type, duration_minutes=sess.duration_minutes or 30,
-        session_seconds=round(max(0.0, session_seconds), 1), status=sess.status, plan=session_plan(sess),
+        session_seconds=round(max(0.0, session_seconds), 1), status=sess.status, evaluate=sess.evaluate,
+        plan=session_plan(sess),
         resume_text=sess.resume_text, jd_text=sess.jd_text, notes_text=sess.notes_text,
         questions=out_qs,
         recording={"url": f"/api/sessions/{sess.id}/recording", "chapters": recording_chapters(sess, qs, answers)} if rec else None,
@@ -563,13 +567,15 @@ async def create_session(body: SessionCreate) -> SessionCreated:
             sess = db.InterviewSession(role=src.role, level=src.level, interview_type=src.interview_type,
                                        num_questions=len(mains), resume_text=src.resume_text, jd_text=src.jd_text, notes_text=src.notes_text,
                                        duration_minutes=src.duration_minutes or 30, plan_json=src.plan_json,
+                                       evaluate=body.evaluate,
                                        scripted_questions=json.dumps(mains))
         else:
             minutes = body.duration_minutes
             sess = db.InterviewSession(role=body.role.strip() or "Software Engineer", level=body.level,
                                        interview_type=body.interview_type, duration_minutes=minutes,
                                        num_questions=max_main_questions(minutes), resume_text=_clean(body.resume_text),
-                                       jd_text=_clean(body.jd_text), notes_text=_clean(body.notes_text))
+                                       jd_text=_clean(body.jd_text), notes_text=_clean(body.notes_text),
+                                       evaluate=body.evaluate)
         dbs.add(sess)
         dbs.commit()
         dbs.refresh(sess)
@@ -676,13 +682,55 @@ def recompute_answers(dbs, session_id: int) -> int:
     return n
 
 
+async def evaluate_interview(dbs, sess: db.InterviewSession, q_payload: list[dict[str, Any]],
+                             per_answer: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The two report LLM calls: scores and feedback, then strong answers."""
+    if not per_answer:
+        raise HTTPException(400, "No spoken answers were recorded, so there's nothing to give feedback on yet.")
+    if not sess.plan_json:  # sessions from before plans existed
+        sess.plan_json = json.dumps(await make_plan(sess))
+        dbs.add(sess)
+        dbs.commit()
+    # Fixed rubric: every candidate is scored against the same standard expectations.
+    plan = prompts.standard_plan()
+    report_model = settings.resolved_report_model
+    s_stats = fluency.session_stats(per_answer)
+    setup = {"role": sess.role, "level": sess.level, "interview_type": sess.interview_type,
+             "minutes": sess.duration_minutes}
+    log.info("calling LLM")
+    raw = await llm.chat(prompts.REPORT_SYSTEM,
+                         [{"role": "user", "content": prompts.report_user_message(setup, plan, q_payload, s_stats, ctx_of(sess))}],
+                         # Long (60–90 min) interviews need a much bigger report budget and more time.
+                         json_mode=True, max_tokens=min(60000, 24000 + 1500 * len(q_payload)),
+                         # Gemini 3 models are tuned for their default temperature; others run at 0 for stability.
+                         temperature=None if report_model.startswith("gemini-3") else 0,
+                         model=report_model, thinking=settings.report_thinking_level or None,
+                         timeout=240 + 10 * len(q_payload))
+    log.info("event=report_raw session=%s model=%s", sess.id, report_model)
+    try:
+        report = scoring.build_report(raw, plan, q_payload, s_stats)
+    except ValueError as e:
+        raise llm.LLMError("The AI returned an invalid report. Please try again.") from e
+    # Second call: rewrite each answer from the original answer + the feedback just written.
+    await strong_answers.add_strong_answers(report, setup, q_payload, ctx_of(sess), report_model,
+                                            settings.report_thinking_level or None)
+    report["generated_with"] = {"llm": settings.llm_provider, "model": report_model,
+                                "stt": stt_service.status()["name"]}
+    report["assessed_at"] = datetime.now(timezone.utc).isoformat()
+    return report, s_stats
+
+
 @app.post("/api/sessions/{session_id}/feedback", response_model=SessionDetail)
-async def make_feedback(session_id: int, regenerate: bool = False) -> SessionDetail:
+async def make_feedback(session_id: int, regenerate: bool = False, evaluate: Optional[bool] = None) -> SessionDetail:
+    """evaluate: true = AI scores and feedback, false = transcript only, omitted = the session's setting."""
     with db.get_db() as dbs:
         sess = load_session(dbs, session_id)
+        want_eval = sess.evaluate if evaluate is None else evaluate
         existing = db.report_for(dbs, session_id)
-        if existing and not regenerate and json.loads(existing.report_json).get("version", 1) >= 5:
-            return session_detail(dbs, sess)
+        if existing and not regenerate:
+            old = json.loads(existing.report_json)
+            if old.get("version", 1) >= 5 and (old.get("evaluated", True) or not want_eval):
+                return session_detail(dbs, sess)
 
         qs = db.questions_for(dbs, session_id)
         if regenerate:
@@ -701,43 +749,12 @@ async def make_feedback(session_id: int, regenerate: bool = False) -> SessionDet
                 if a.stats:
                     per_answer.append({"question_id": q.id, "index": q.position + 1, "stats": a.stats})
             q_payload.append(item)
-        if not per_answer:
-            raise HTTPException(400, "No spoken answers were recorded, so there's nothing to give feedback on yet.")
-
-        if not sess.plan_json:  # sessions from before plans existed
-            sess.plan_json = json.dumps(await make_plan(sess))
-            dbs.add(sess)
-            dbs.commit()
-        # Fixed rubric: every candidate is scored against the same standard expectations.
-        plan = prompts.standard_plan()
-        report_model = settings.resolved_report_model
-
-        s_stats = fluency.session_stats(per_answer)
-        setup = {"role": sess.role, "level": sess.level, "interview_type": sess.interview_type,
-                 "minutes": sess.duration_minutes}
-        log.info("calling LLM")
-        raw = await llm.chat(prompts.REPORT_SYSTEM,
-                             [{"role": "user", "content": prompts.report_user_message(setup, plan, q_payload, s_stats, ctx_of(sess))}],
-                             # Long (60–90 min) interviews need a much bigger report budget and more time.
-                             json_mode=True, max_tokens=min(60000, 24000 + 1500 * len(q_payload)),
-                             # Gemini 3 models are tuned for their default temperature; others run at 0 for stability.
-                             temperature=None if report_model.startswith("gemini-3") else 0,
-                             model=report_model, thinking=settings.report_thinking_level or None,
-                             timeout=240 + 10 * len(q_payload))
-
-
-        log.info("event=report_raw session=%s model=%s", session_id, report_model)
-        
-        try:
-            report = scoring.build_report(raw, plan, q_payload, s_stats)
-        except ValueError as e:
-            raise llm.LLMError("The AI returned an invalid report. Please try again.") from e
-        # Second call: rewrite each answer from the original answer + the feedback just written.
-        await strong_answers.add_strong_answers(report, setup, q_payload, ctx_of(sess), report_model,
-                                                settings.report_thinking_level or None)
-        report["generated_with"] = {"llm": settings.llm_provider, "model": report_model,
-                                    "stt": stt_service.status()["name"]}
-        report["assessed_at"] = datetime.now(timezone.utc).isoformat()
+        if want_eval:
+            report, s_stats = await evaluate_interview(dbs, sess, q_payload, per_answer)
+        else:  # Transcript only: no LLM calls, scores stay empty.
+            report, s_stats = scoring.transcript_only_report(), {}
+            report["generated_with"] = {"stt": stt_service.status()["name"]}
+            report["assessed_at"] = datetime.now(timezone.utc).isoformat()
 
         await build_recording(sess, qs, answers)
 
@@ -747,6 +764,7 @@ async def make_feedback(session_id: int, regenerate: bool = False) -> SessionDet
         dbs.add(db.Report(session_id=session_id, overall_score=report["overall_score"],
                           fluency_score=s_stats.get("fluency_score"), report_json=json.dumps(report)))
         sess.status = "finished"
+        sess.evaluate = want_eval
         dbs.add(sess)
         dbs.commit()
         log.info("event=report_created session=%s overall=%s bands=%s", session_id, report["overall_score"],
@@ -759,12 +777,13 @@ async def list_sessions() -> list[SessionSummary]:
     with db.get_db() as dbs:
         out = []
         for s, r in db.list_sessions(dbs):
-            version = json.loads(r.report_json).get("version", 1) if r else None
+            rep = json.loads(r.report_json) if r else {}
+            version = rep.get("version", 1) if r else None
             out.append(SessionSummary(
                 id=s.id, created_at=iso(s.created_at), role=s.role, level=s.level, interview_type=s.interview_type,
                 duration_minutes=s.duration_minutes or 30, status=s.status,
                 overall_score=r.overall_score if r else None, fluency_score=r.fluency_score if r else None,
-                report_version=version))
+                report_version=version, evaluated=rep.get("evaluated", True) if r else None))
         return out
 
 

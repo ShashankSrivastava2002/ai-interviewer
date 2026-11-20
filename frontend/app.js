@@ -223,6 +223,7 @@ function initSetup() {
   const form = $("#setup-form");
   if (saved) {
     $("#role").value = saved.role || "";
+    $("#evaluate").checked = saved.evaluate !== false;
     const lvl = form.querySelector(`input[name=level][value="${saved.level}"]`);
     if (lvl) lvl.checked = true;
     const typ = form.querySelector(`input[name=interview_type][value="${saved.interview_type}"]`);
@@ -278,6 +279,7 @@ function initSetup() {
       resume_text: $("#resume").value.trim() || null,
       jd_text: $("#jd").value.trim() || null,
       notes_text: $("#notes").value.trim() || null,
+      evaluate: $("#evaluate").checked,
     };
     if (!setup.role) {
       err.textContent = "Tell us which role you're practising for (or tap a suggestion).";
@@ -829,7 +831,9 @@ async function handleNext(next) {
 }
 
 async function onEnd() {
-  const ok = await confirmDialog();
+  const ok = await confirmDialog(state.createBody?.evaluate === false
+    ? { body: "Your transcript will be saved for the questions you've answered.", ok: "End & view transcript" }
+    : undefined);
   if (!ok) return;
   state.ending = true;
   state.askToken++;
@@ -858,7 +862,7 @@ function finishInterview() {
   synth?.cancel();
   releaseMic();
   location.hash = "#/loading";
-  generateFeedback(state.sessionId);
+  generateFeedback(state.sessionId, false, state.createBody?.evaluate === false ? false : null);
 }
 
 function confirmDialog({
@@ -1082,7 +1086,7 @@ async function showDetails(id) {
     ["Length", `${d.duration_minutes} min planned${d.session_seconds ? ` · ${Math.max(1, Math.round(d.session_seconds / 60))} min taken` : ""}`],
     ["Date", fmtDate(d.created_at)],
     ["Questions asked", String(d.questions.length)],
-    ["Score", d.report?.overall_score != null ? `${d.report.overall_score}/100 · ${d.report.overall_band || ""}` : "No report yet"],
+    ["Score", d.report?.overall_score != null ? `${d.report.overall_score}/100 · ${d.report.overall_band || ""}` : d.report?.evaluated === false ? "Not evaluated" : "No report yet"],
   ];
   const block = (key, title, text) => `
     <section class="detail-block">
@@ -1146,16 +1150,24 @@ async function reassess(id) {
   generateFeedback(id, true);
 }
 
-async function generateFeedback(id, regenerate = false) {
+/** evaluate: true = run AI scoring, false = transcript only, null = use the interview's own setting. */
+async function generateFeedback(id, regenerate = false, evaluate = null) {
   show("loading");
-  $("#loading-title").textContent = regenerate ? "Re-assessing your interview…" : "Writing your feedback…";
-  $("#loading-text").textContent = regenerate
-    ? "Re-analysing your saved answers, re-scoring, then rewriting each answer. The old assessment will be replaced. This can take 2–3 minutes."
-    : "Scoring your answers, then rewriting each one from your feedback. This can take 2–3 minutes.";
+  $("#loading-title").textContent = evaluate === false ? "Preparing your transcript…"
+    : regenerate ? "Re-assessing your interview…" : "Writing your feedback…";
+  $("#loading-text").textContent = evaluate === false
+    ? "Putting your recording and verbatim transcript together."
+    : regenerate
+      ? "Re-analysing your saved answers, re-scoring, then rewriting each answer. The old assessment will be replaced. This can take 2–3 minutes."
+      : "Scoring your answers, then rewriting each one from your feedback. This can take 2–3 minutes.";
   $("#loading-error").hidden = true;
   $("#loading-actions").hidden = true;
   try {
-    const detail = await api(`/api/sessions/${id}/feedback${regenerate ? "?regenerate=true" : ""}`, { method: "POST" });
+    const params = new URLSearchParams();
+    if (regenerate) params.set("regenerate", "true");
+    if (evaluate !== null) params.set("evaluate", String(evaluate));
+    const query = params.toString();
+    const detail = await api(`/api/sessions/${id}/feedback${query ? `?${query}` : ""}`, { method: "POST" });
     state.detailCache[id] = detail;
     state.sessionId = null;
     if (location.hash === `#/report/${id}`) route();
@@ -1165,7 +1177,7 @@ async function generateFeedback(id, regenerate = false) {
     $("#loading-error").hidden = false;
     $("#loading-actions").hidden = false;
     $("#loading-retry").hidden = e.status === 400;
-    $("#loading-retry").onclick = () => generateFeedback(id, regenerate);
+    $("#loading-retry").onclick = () => generateFeedback(id, regenerate, evaluate);
   }
 }
 
@@ -1295,14 +1307,16 @@ async function openReport(id) {
   }
   if (!detail.report || (detail.report.version || 1) < 2) {
     const legacy = !!detail.report;
+    const transcriptOnly = !legacy && detail.evaluate === false;
     root.innerHTML = `
       <p class="eyebrow">${esc(detail.role)}</p>
-      <h2 class="title">${legacy ? "This report uses the old format" : "No report yet"}</h2>
+      <h2 class="title">${legacy ? "This report uses the old format" : transcriptOnly ? "Transcript not ready yet" : "No report yet"}</h2>
       <p class="muted">${legacy
         ? "Regenerate it to get the new breakdown: overall score /100, four competencies, evidence and strong answers."
+        : transcriptOnly ? "This interview was stopped before its transcript was prepared."
         : "This interview was stopped before feedback was generated."}</p>
-      <div class="row-gap"><button class="btn btn-primary" id="gen-now">${legacy ? "Regenerate report" : "Generate feedback"}</button><a class="btn btn-ghost" href="#/history">Back</a></div>`;
-    $("#gen-now").onclick = () => generateFeedback(id, legacy);
+      <div class="row-gap"><button class="btn btn-primary" id="gen-now">${legacy ? "Regenerate report" : transcriptOnly ? "Show transcript" : "Generate feedback"}</button><a class="btn btn-ghost" href="#/history">Back</a></div>`;
+    $("#gen-now").onclick = () => generateFeedback(id, legacy, transcriptOnly ? false : null);
     return;
   }
   renderReport(detail);
@@ -1466,8 +1480,82 @@ function questionCardHTML(d, qc) {
   </article>`;
 }
 
+function reportActionsHTML() {
+  return `
+    <div class="actions">
+      <button class="btn btn-primary" id="act-retry">Retry same questions</button>
+      <a class="btn btn-secondary" href="#/setup">New interview</a>
+      <button class="btn btn-ghost" id="act-pdf">Download PDF</button>
+      <button class="btn btn-ghost" id="act-csv">Download CSV</button>
+      <button class="btn btn-ghost" id="act-txt">Download verbatim .txt</button>
+      <button class="btn btn-ghost" id="act-json">Download JSON</button>
+    </div>
+  `;
+}
+
+/** Recording player and word-synced transcript. */
+function recordingHTML(d, printable = false) {
+  const rec = d.recording;
+  return `
+    <div class="card player no-print">
+      <span class="player-label">Interview Recording</span>
+      <span class="vsep" aria-hidden="true"></span>
+      <button type="button" class="icon-btn" id="pl-play" aria-label="Play">${ICON.play}</button>
+      <input type="range" id="pl-seek" class="pl-seek" min="0" max="1000" value="0" aria-label="Seek" />
+      <span class="pl-time" id="pl-time">00:00 / 00:00</span>
+      <select id="session-speed" class="pl-speed" aria-label="Playback speed">${[0.75, 1, 1.25, 1.5, 2].map((v) => `<option value="${v}" ${v === 1 ? "selected" : ""}>${v}x</option>`).join("")}</select>
+      <button type="button" class="icon-btn" id="pl-transcript" aria-pressed="true" title="Show transcript">${ICON.transcript}</button>
+      <a class="icon-btn" href="${esc(rec.url)}" download="interview-${d.id}.m4a" title="Download recording">${ICON.download}</a>
+      <audio id="session-audio" preload="metadata" src="${esc(rec.url)}"></audio>
+    </div>
+    <div class="card synced-card ${printable ? "" : "no-print"}" id="synced-card">
+      <div class="synced-head">
+        <div class="chapters">${(rec.chapters || []).map((c) => `<button type="button" class="q-chip" data-seek="${c.start}">Q${c.question} · ${fmtTime(c.start)}</button>`).join("")}</div>
+        <label class="switch"><input type="checkbox" id="follow-toggle" checked /> <span>Follow along</span></label>
+      </div>
+      <ol id="synced" class="conversation synced-list">${syncedTranscriptHTML(d)}</ol>
+      <p class="muted small">Your answers are played back to back; the interviewer's voice isn't recorded. Click any word or timestamp to jump there.</p>
+    </div>`;
+}
+
+/** Evaluation was off: empty scores, then the recording and verbatim transcript. */
+function renderTranscriptReport(d) {
+  const r = d.report;
+  const mins = Math.max(1, Math.round((d.session_seconds || d.duration_minutes * 60) / 60));
+  const date = new Date(d.created_at).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" });
+  const empty = `<div class="tile-foot"><span><b>—</b> <small>/100</small></span><span class="band b-none">Not assessed</span></div>`;
+  $("#report-root").innerHTML = `
+    <a class="back-link no-print" href="#/history">${ICON.back} Back</a>
+    <div class="transcript-report">
+      <article class="card report-main">
+        <div class="report-titlebar">
+          <h1 class="report-title">Interview Transcript</h1>
+          <div class="row-actions no-print">
+            <button type="button" class="btn btn-secondary btn-sm" id="run-eval" title="Score this interview and write feedback">Run evaluation</button>
+            <button type="button" class="btn btn-ghost btn-sm delete-btn" id="delete-top" title="Permanently delete this interview">Delete</button>
+          </div>
+        </div>
+        <p class="report-meta">${esc(date)}<i>•</i>${mins} min session<i>•</i>${esc(d.role)}<i>•</i>AI evaluation off</p>
+        <div class="score-grid">
+          <div class="score-box overall-box"><h3>Overall Score</h3><div class="empty-score"><b>—</b><small>/100</small><span class="band b-none">Not assessed</span></div></div>
+          <div class="comp-tiles">${(r.competencies || []).map((c) => `<div class="score-box comp-tile static"><h3>${esc(c.name)}</h3>${empty}</div>`).join("")}</div>
+        </div>
+      </article>
+      ${d.recording ? recordingHTML(d, true) : `
+      <div class="card synced-card" id="synced-card">
+        <ol id="synced" class="conversation synced-list">${syncedTranscriptHTML(d)}</ol>
+      </div>`}
+    </div>
+    ${reportActionsHTML()}
+    <p class="muted small" style="margin-top:12px">Speech: ${esc(r.generated_with?.stt || "")}. No AI scores or feedback were generated.</p>
+  `;
+  wireReport(d);
+  wirePlayer();
+}
+
 function renderReport(d) {
   const r = d.report;
+  if (r.evaluated === false) { renderTranscriptReport(d); return; }
   const mins = Math.max(1, Math.round((d.session_seconds || d.duration_minutes * 60) / 60));
   const comps = r.competencies || [];
   const rec = d.recording;
@@ -1510,26 +1598,7 @@ function renderReport(d) {
       </div>
     </article>
 
-    ${rec ? `
-    <div class="card player no-print">
-      <span class="player-label">Interview Recording</span>
-      <span class="vsep" aria-hidden="true"></span>
-      <button type="button" class="icon-btn" id="pl-play" aria-label="Play">${ICON.play}</button>
-      <input type="range" id="pl-seek" class="pl-seek" min="0" max="1000" value="0" aria-label="Seek" />
-      <span class="pl-time" id="pl-time">00:00 / 00:00</span>
-      <select id="session-speed" class="pl-speed" aria-label="Playback speed">${[0.75, 1, 1.25, 1.5, 2].map((v) => `<option value="${v}" ${v === 1 ? "selected" : ""}>${v}x</option>`).join("")}</select>
-      <button type="button" class="icon-btn" id="pl-transcript" aria-pressed="true" title="Show transcript">${ICON.transcript}</button>
-      <a class="icon-btn" href="${esc(rec.url)}" download="interview-${d.id}.m4a" title="Download recording">${ICON.download}</a>
-      <audio id="session-audio" preload="metadata" src="${esc(rec.url)}"></audio>
-    </div>
-    <div class="card synced-card no-print" id="synced-card">
-      <div class="synced-head">
-        <div class="chapters">${(rec.chapters || []).map((c) => `<button type="button" class="q-chip" data-seek="${c.start}">Q${c.question} · ${fmtTime(c.start)}</button>`).join("")}</div>
-        <label class="switch"><input type="checkbox" id="follow-toggle" checked /> <span>Follow along</span></label>
-      </div>
-      <ol id="synced" class="conversation synced-list">${syncedTranscriptHTML(d)}</ol>
-      <p class="muted small">Your answers are played back to back; the interviewer's voice isn't recorded. Click any word or timestamp to jump there.</p>
-    </div>` : ""}
+    ${rec ? recordingHTML(d) : ""}
 
     <h2 class="h-page">Detailed Breakdown</h2>
     <div class="card breakdown">
@@ -1551,14 +1620,7 @@ function renderReport(d) {
       </div>`).join("")}
     </div>
 
-    <div class="actions">
-      <button class="btn btn-primary" id="act-retry">Retry same questions</button>
-      <a class="btn btn-secondary" href="#/setup">New interview</a>
-      <button class="btn btn-ghost" id="act-pdf">Download PDF</button>
-      <button class="btn btn-ghost" id="act-csv">Download CSV</button>
-      <button class="btn btn-ghost" id="act-txt">Download verbatim .txt</button>
-      <button class="btn btn-ghost" id="act-json">Download JSON</button>
-    </div>
+    ${reportActionsHTML()}
     <p class="muted small" style="margin-top:12px">Generated with ${esc(r.generated_with?.model || "")} · speech: ${esc(r.generated_with?.stt || "")}. Scores are computed from evidence-backed expectation levels; quotes that couldn't be found in your transcript were discarded.</p>
   `;
 
@@ -1601,9 +1663,10 @@ function syncedTranscriptHTML(d) {
     const ts = off != null ? `<button type="button" class="ts" data-seek="${off}">${fmtTime(off)}</button>` : "";
     const ai = `<li class="turn ai"><div class="turn-meta"><b>Interviewer</b><span>Q${q.number}${q.kind === "followup" ? " · follow-up" : ""}</span>${ts}</div><p class="turn-text">${esc(q.text)}</p></li>`;
     let me;
-    if (a && !a.skipped && a.tokens?.length && off != null) {
+    if (a && !a.skipped && a.tokens?.length) {
+      const sync = off != null ? ` synced" data-offset="${off}` : "";
       me = `<li class="turn me" data-state="done"><div class="turn-meta"><b>You</b><span>Verbatim</span></div>
-        <div class="transcript synced" data-offset="${off}">${renderTokens(a.tokens)}</div></li>`;
+        <div class="transcript${sync}">${renderTokens(a.tokens)}</div></li>`;
     } else {
       me = `<li class="turn me" data-state="skipped"><div class="turn-meta"><b>You</b></div><p class="muted">${a?.skipped ? "Skipped" : "No answer recorded"}</p></li>`;
     }
@@ -1678,9 +1741,10 @@ function wireReport(d) {
   $("#session-speed")?.addEventListener("change", (e) => ($("#session-audio").playbackRate = Number(e.target.value)));
 
   wireTranscripts(".qa");
-  $("#act-retry").onclick = () => { beginCreate({ retry_of: d.id }); location.hash = "#/mic"; };
+  $("#act-retry").onclick = () => { beginCreate({ retry_of: d.id, evaluate: d.evaluate }); location.hash = "#/mic"; };
   $("#act-pdf").onclick = () => window.print();
-  $("#reassess-top").onclick = () => reassess(d.id);
+  $("#reassess-top")?.addEventListener("click", () => reassess(d.id));
+  $("#run-eval")?.addEventListener("click", () => { delete state.detailCache[d.id]; generateFeedback(d.id, false, true); });
   $("#delete-top").onclick = () => deleteInterview(d.id, `${d.role} · ${fmtDate(d.created_at)}`, true);
   $("#regen-top")?.addEventListener("click", () => reassess(d.id));
   $("#act-csv").onclick = () => download(`interview-${d.id}.csv`, reportCsv(d), "text/csv");
@@ -1802,7 +1866,7 @@ async function loadHistory() {
             <div class="h-role">${esc(s.role)}</div>
             <div class="h-meta">${esc(fmtDate(s.created_at))} · ${esc(s.level)} · ${esc(TYPE_LABEL[s.interview_type] || s.interview_type)} · ${s.duration_minutes} min</div>
           </div>
-          ${o != null ? `<span class="score-badge" title="Overall">${o}/100</span>` : `<span class="score-badge none">${s.status === "active" ? "Unfinished" : "No report"}</span>`}
+          ${o != null ? `<span class="score-badge" title="Overall">${o}/100</span>` : `<span class="score-badge none">${s.evaluated === false ? "Transcript only" : s.status === "active" ? "Unfinished" : "No report"}</span>`}
           ${s.fluency_score != null ? `<span class="score-badge flu" title="Delivery">Delivery ${Math.round(s.fluency_score * 10)}</span>` : "<span></span>"}
         </a>
         <div class="row-actions">

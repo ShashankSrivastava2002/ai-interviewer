@@ -188,6 +188,7 @@ def build_report(raw: Any, plan: dict[str, Any], questions: list[dict[str, Any]]
     overall = round(sum(scored) / len(scored)) if scored else None
     return {
         "version": 5,
+        "evaluated": True,
         "overall_score": overall,
         "overall_band": band(overall),
         "overall_summary": str(raw.get("overall_summary", "")),
@@ -195,4 +196,22 @@ def build_report(raw: Any, plan: dict[str, Any], questions: list[dict[str, Any]]
         "improve": [str(x) for x in (raw.get("improve") or []) if str(x).strip()][:3],
         "competencies": competencies,
         "session_stats": session_stats,
+    }
+
+
+def transcript_only_report() -> dict[str, Any]:
+    """Report for an interview run with evaluation off: empty scores, no LLM involved."""
+    return {
+        "version": 5,
+        "evaluated": False,
+        "overall_score": None,
+        "overall_band": None,
+        "overall_summary": "",
+        "doing_well": [],
+        "improve": [],
+        "competencies": [{"key": c["key"], "name": c["name"], "description": c["description"], "score": None,
+                          "band": None, "score_rationale": "", "assessment": "", "expectations": [],
+                          "unverified_quotes": 0, "improvements": [], "strengths": [], "questions": []}
+                         for c in COMPETENCIES],
+        "session_stats": {},
     }

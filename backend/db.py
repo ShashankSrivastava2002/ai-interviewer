@@ -41,6 +41,7 @@ class InterviewSession(SQLModel, table=True):
     duration_minutes: int = 30            # time box for the screen
     plan_json: Optional[str] = None       # interview plan: sections + expectations
     started_at: Optional[datetime] = None # when the candidate actually began (after mic check)
+    evaluate: bool = True                 # False = transcript only: no AI scores or feedback
 
 
 class Question(SQLModel, table=True):
@@ -105,6 +106,7 @@ _MIGRATIONS = [
     ("question", "section", "VARCHAR"),
     ("interview_session", "jd_text", "VARCHAR"),
     ("interview_session", "notes_text", "VARCHAR"),
+    ("interview_session", "evaluate", "BOOLEAN NOT NULL DEFAULT 1"),
 ]
 
 
